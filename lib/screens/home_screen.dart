@@ -16,20 +16,41 @@ class _HomeScreenState extends State<HomeScreen> {
   final DiscoveryService discovery = DiscoveryService();
 
   List<Device> devices = [];
-
   bool scanning = false;
 
   Future<void> scanNetwork() async {
     setState(() {
       scanning = true;
+      devices.clear();
     });
 
-    final results = await discovery.scanNetwork();
+    try {
+      final results = await discovery.scanNetwork();
 
-    setState(() {
-      devices = results;
-      scanning = false;
-    });
+      setState(() {
+        devices = results;
+      });
+
+      debugPrint("Found ${results.length} device(s)");
+
+      for (final device in results) {
+        debugPrint(device.toString());
+      }
+    } catch (e) {
+      debugPrint("Discovery error: $e");
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Discovery failed: $e")));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          scanning = false;
+        });
+      }
+    }
   }
 
   @override
@@ -64,7 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () {
-                      // TODO: Pair phone
+                      // TODO: QR Pairing
                     },
                     icon: const Icon(Icons.qr_code_scanner),
                     label: const Text("Pair Phone"),

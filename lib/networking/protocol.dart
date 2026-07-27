@@ -1,5 +1,5 @@
 const int discoveryPort = 5000;
 
-const String discoverMessage = "LENSLINKS_DISCOVER";
+const String discoveryRequest = "LENSLINKS_DISCOVER";
 
-const String responseMessage = "LENSLINKS_RESPONSE";
+const String discoveryResponse = "LENSLINKS_RESPONSE";

@@ -22,4 +22,9 @@ class Device {
       connected: connected ?? this.connected,
     );
   }
+
+  @override
+  String toString() {
+    return 'Device(name: $name, ip: $ip, port: $port, connected: $connected)';
+  }
 }
