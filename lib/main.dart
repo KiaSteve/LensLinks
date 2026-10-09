@@ -1,7 +1,21 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
+
+import 'ffi/virtual_camera_bridge.dart';
 import 'screens/home_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  if (Platform.isWindows) {
+    await windowManager.ensureInitialized();
+
+    // Load the native DLL only on Windows
+    await VirtualCameraBridge.instance.load();
+  }
+
   runApp(const LensLinksApp());
 }
 

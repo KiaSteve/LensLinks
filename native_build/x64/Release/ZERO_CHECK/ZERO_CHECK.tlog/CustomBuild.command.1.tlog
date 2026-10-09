@@ -1,0 +1,10 @@
+^C:\USERS\ADMINISTRATOR\LENSLINKS\NATIVE_BUILD\CMAKEFILES\FD1947ABA7F659ECB9F3AA415D78C1F6\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" -SC:/Users/Administrator/lenslinks/native -BC:/Users/Administrator/lenslinks/native_build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/Administrator/lenslinks/native_build/LensLinksNative.slnx
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

@@ -1,0 +1,521 @@
+#include <windows.h>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mferror.h>
+#include <iostream>
+
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "mfplat.lib")
+#pragma comment(lib, "mf.lib")
+#pragma comment(lib, "mfuuid.lib")
+
+static void PrintHR(const char* label, HRESULT hr)
+{
+    std::cout
+        << label
+        << " hr=0x"
+        << std::hex
+        << static_cast<unsigned long>(hr)
+        << std::dec
+        << std::endl;
+}
+
+int main()
+{
+    // ========================================================
+    // COM initialization
+    // ========================================================
+
+    HRESULT hr = CoInitializeEx(
+        nullptr,
+        COINIT_MULTITHREADED);
+
+    if (FAILED(hr))
+    {
+        PrintHR(
+            "[Test] CoInitializeEx failed",
+            hr);
+
+        return 1;
+    }
+
+    std::cout
+        << "[Test] COM initialized"
+        << std::endl;
+
+    // ========================================================
+    // Media Foundation initialization
+    // ========================================================
+
+    hr = MFStartup(MF_VERSION);
+
+    if (FAILED(hr))
+    {
+        PrintHR(
+            "[Test] MFStartup failed",
+            hr);
+
+        CoUninitialize();
+        return 1;
+    }
+
+    std::cout
+        << "[Test] Media Foundation initialized"
+        << std::endl;
+
+    // ========================================================
+    // LensLinks CLSID
+    // ========================================================
+
+    const CLSID clsid =
+    {
+        0x8F8B9C41,
+        0x4A6D,
+        0x4C7B,
+        {
+            0x91,
+            0x2A,
+            0x7E,
+            0x52,
+            0x9D,
+            0x13,
+            0x84,
+            0x61
+        }
+    };
+
+    // ========================================================
+    // Create IMFActivate
+    // ========================================================
+
+    IMFActivate* activate = nullptr;
+
+    hr = CoCreateInstance(
+        clsid,
+        nullptr,
+        CLSCTX_INPROC_SERVER,
+        IID_IMFActivate,
+        reinterpret_cast<void**>(&activate));
+
+    PrintHR(
+        "[Test] CoCreateInstance(IMFActivate)",
+        hr);
+
+    if (FAILED(hr))
+    {
+        MFShutdown();
+        CoUninitialize();
+        return 1;
+    }
+
+    std::cout
+        << "[Test] IMFActivate acquired"
+        << std::endl;
+
+    // ========================================================
+    // Activate Media Source
+    // ========================================================
+
+    IMFMediaSource* source = nullptr;
+
+    hr = activate->ActivateObject(
+        IID_IMFMediaSource,
+        reinterpret_cast<void**>(&source));
+
+    PrintHR(
+        "[Test] ActivateObject",
+        hr);
+
+    if (FAILED(hr))
+    {
+        activate->Release();
+
+        MFShutdown();
+        CoUninitialize();
+
+        return 1;
+    }
+
+    std::cout
+        << "[Test] IMFMediaSource acquired"
+        << std::endl;
+
+    // ========================================================
+    // Characteristics
+    // ========================================================
+
+    DWORD characteristics = 0;
+
+    hr = source->GetCharacteristics(
+        &characteristics);
+
+    PrintHR(
+        "[Test] GetCharacteristics",
+        hr);
+
+    if (SUCCEEDED(hr))
+    {
+        std::cout
+            << "[Test] Characteristics: 0x"
+            << std::hex
+            << characteristics
+            << std::dec
+            << std::endl;
+    }
+
+    // ========================================================
+    // Create Presentation Descriptor
+    // ========================================================
+
+    IMFPresentationDescriptor* presentationDescriptor =
+        nullptr;
+
+    hr = source->CreatePresentationDescriptor(
+        &presentationDescriptor);
+
+    PrintHR(
+        "[Test] CreatePresentationDescriptor",
+        hr);
+
+    if (FAILED(hr))
+    {
+        source->Shutdown();
+        source->Release();
+
+        activate->ShutdownObject();
+        activate->Release();
+
+        MFShutdown();
+        CoUninitialize();
+
+        return 1;
+    }
+
+    std::cout
+        << "[Test] IMFPresentationDescriptor acquired"
+        << std::endl;
+
+    // ========================================================
+    // Stream count
+    // ========================================================
+
+    DWORD streamCount = 0;
+
+    hr = presentationDescriptor->GetStreamDescriptorCount(
+        &streamCount);
+
+    PrintHR(
+        "[Test] GetStreamDescriptorCount",
+        hr);
+
+    std::cout
+        << "[Test] Stream count: "
+        << streamCount
+        << std::endl;
+
+    if (FAILED(hr) || streamCount == 0)
+    {
+        std::cerr
+            << "[Test] No streams available"
+            << std::endl;
+
+        presentationDescriptor->Release();
+
+        source->Shutdown();
+        source->Release();
+
+        activate->ShutdownObject();
+        activate->Release();
+
+        MFShutdown();
+        CoUninitialize();
+
+        return 1;
+    }
+
+    // ========================================================
+    // Inspect first stream descriptor
+    // ========================================================
+
+    BOOL selected = FALSE;
+
+    IMFStreamDescriptor* streamDescriptor = nullptr;
+
+    hr = presentationDescriptor->GetStreamDescriptorByIndex(
+        0,
+        &selected,
+        &streamDescriptor);
+
+    PrintHR(
+        "[Test] GetStreamDescriptorByIndex",
+        hr);
+
+    std::cout
+        << "[Test] Stream selected: "
+        << (selected ? "YES" : "NO")
+        << std::endl;
+
+    if (FAILED(hr) || streamDescriptor == nullptr)
+    {
+        presentationDescriptor->Release();
+
+        source->Shutdown();
+        source->Release();
+
+        activate->ShutdownObject();
+        activate->Release();
+
+        MFShutdown();
+        CoUninitialize();
+
+        return 1;
+    }
+
+    // ========================================================
+    // Get Media Type Handler
+    // ========================================================
+
+    IMFMediaTypeHandler* mediaTypeHandler = nullptr;
+
+    hr = streamDescriptor->GetMediaTypeHandler(
+        &mediaTypeHandler);
+
+    PrintHR(
+        "[Test] GetMediaTypeHandler",
+        hr);
+
+    if (SUCCEEDED(hr) && mediaTypeHandler != nullptr)
+    {
+        // ====================================================
+        // Media type count
+        // ====================================================
+
+        DWORD mediaTypeCount = 0;
+
+        hr = mediaTypeHandler->GetMediaTypeCount(
+            &mediaTypeCount);
+
+        PrintHR(
+            "[Test] GetMediaTypeCount",
+            hr);
+
+        std::cout
+            << "[Test] Media type count: "
+            << mediaTypeCount
+            << std::endl;
+
+        // ====================================================
+        // Inspect first media type
+        // ====================================================
+
+        if (SUCCEEDED(hr) && mediaTypeCount > 0)
+        {
+            IMFMediaType* mediaType = nullptr;
+
+            hr = mediaTypeHandler->GetMediaTypeByIndex(
+                0,
+                &mediaType);
+
+            PrintHR(
+                "[Test] GetMediaTypeByIndex(0)",
+                hr);
+
+            if (SUCCEEDED(hr) && mediaType != nullptr)
+            {
+                // ============================================
+                // Major type
+                // ============================================
+
+                GUID majorType = GUID_NULL;
+
+                hr = mediaType->GetGUID(
+                    MF_MT_MAJOR_TYPE,
+                    &majorType);
+
+                PrintHR(
+                    "[Test] Get major type",
+                    hr);
+
+                if (SUCCEEDED(hr))
+                {
+                    if (majorType == MFMediaType_Video)
+                    {
+                        std::cout
+                            << "[Test] Major type: VIDEO"
+                            << std::endl;
+                    }
+                    else
+                    {
+                        std::cout
+                            << "[Test] Major type: OTHER"
+                            << std::endl;
+                    }
+                }
+
+                // ============================================
+                // Frame size
+                // ============================================
+
+                UINT32 width = 0;
+                UINT32 height = 0;
+
+                hr = MFGetAttributeSize(
+                    mediaType,
+                    MF_MT_FRAME_SIZE,
+                    &width,
+                    &height);
+
+                PrintHR(
+                    "[Test] Get frame size",
+                    hr);
+
+                if (SUCCEEDED(hr))
+                {
+                    std::cout
+                        << "[Test] Frame size: "
+                        << width
+                        << "x"
+                        << height
+                        << std::endl;
+                }
+
+                // ============================================
+                // Frame rate
+                // ============================================
+
+                UINT32 frameRateNumerator = 0;
+                UINT32 frameRateDenominator = 0;
+
+                hr = MFGetAttributeRatio(
+                    mediaType,
+                    MF_MT_FRAME_RATE,
+                    &frameRateNumerator,
+                    &frameRateDenominator);
+
+                PrintHR(
+                    "[Test] Get frame rate",
+                    hr);
+
+                if (SUCCEEDED(hr) &&
+                    frameRateDenominator != 0)
+                {
+                    double fps =
+                        static_cast<double>(
+                            frameRateNumerator) /
+                        static_cast<double>(
+                            frameRateDenominator);
+
+                    std::cout
+                        << "[Test] Frame rate: "
+                        << fps
+                        << " FPS"
+                        << std::endl;
+                }
+
+                // ============================================
+                // Media subtype
+                // ============================================
+
+                GUID subtype = GUID_NULL;
+
+                hr = mediaType->GetGUID(
+                    MF_MT_SUBTYPE,
+                    &subtype);
+
+                PrintHR(
+                    "[Test] Get subtype",
+                    hr);
+
+                if (SUCCEEDED(hr))
+                {
+                    std::cout
+                        << "[Test] Media subtype GUID: "
+                        << std::hex
+                        << subtype.Data1
+                        << "-"
+                        << subtype.Data2
+                        << "-"
+                        << subtype.Data3
+                        << std::dec
+                        << std::endl;
+                }
+
+                // ============================================
+                // Interlace mode
+                // ============================================
+
+                UINT32 interlaceMode = 0;
+
+                hr = mediaType->GetUINT32(
+                    MF_MT_INTERLACE_MODE,
+                    &interlaceMode);
+
+                PrintHR(
+                    "[Test] Get interlace mode",
+                    hr);
+
+                // ============================================
+                // Cleanup media type
+                // ============================================
+
+                mediaType->Release();
+            }
+        }
+
+        mediaTypeHandler->Release();
+    }
+
+    // ========================================================
+    // Stream descriptor cleanup
+    // ========================================================
+
+    streamDescriptor->Release();
+
+    // ========================================================
+    // Presentation descriptor cleanup
+    // ========================================================
+
+    presentationDescriptor->Release();
+
+    // ========================================================
+    // Shutdown source
+    // ========================================================
+
+    hr = source->Shutdown();
+
+    PrintHR(
+        "[Test] Source Shutdown",
+        hr);
+
+    source->Release();
+
+    // ========================================================
+    // Shutdown activation object
+    // ========================================================
+
+    hr = activate->ShutdownObject();
+
+    PrintHR(
+        "[Test] Activation ShutdownObject",
+        hr);
+
+    activate->Release();
+
+    // ========================================================
+    // Media Foundation shutdown
+    // ========================================================
+
+    MFShutdown();
+
+    // ========================================================
+    // COM shutdown
+    // ========================================================
+
+    CoUninitialize();
+
+    std::cout
+        << "[Test] COMPLETE"
+        << std::endl;
+
+    return 0;
+}

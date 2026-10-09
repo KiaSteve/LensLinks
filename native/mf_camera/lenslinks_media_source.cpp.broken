@@ -1,0 +1,143 @@
+﻿#include "virtual_camera_registration.h"
+
+#include <iostream>
+#include <mfapi.h>
+#include <mfidl.h>
+#include <mfvirtualcamera.h>
+
+VirtualCameraRegistration::VirtualCameraRegistration()
+{
+}
+
+VirtualCameraRegistration::~VirtualCameraRegistration()
+{
+    stop();
+}
+
+bool VirtualCameraRegistration::start()
+{
+    if (started_)
+    {
+        return true;
+    }
+
+    std::cout
+        << "[VirtualCamera] Creating virtual camera..."
+        << std::endl;
+
+    HRESULT hr = MFStartup(
+        MF_VERSION,
+        MFSTARTUP_FULL);
+
+    if (FAILED(hr))
+    {
+        std::cerr
+            << "[VirtualCamera] MFStartup failed: 0x"
+            << std::hex
+            << static_cast<unsigned long>(hr)
+            << std::dec
+            << std::endl;
+
+        return false;
+    }
+
+    const wchar_t* sourceId =
+        L"{8F8B9C41-4A6D-4C7B-912A-7E529D138461}";
+
+    HRESULT createHr =
+        MFCreateVirtualCamera(
+            MFVirtualCameraType_SoftwareCameraSource,
+            MFVirtualCameraLifetime_Session,
+            MFVirtualCameraAccess_CurrentUser,
+            L"LensLinks Camera",
+            sourceId,
+            nullptr,
+            0,
+            &camera_);
+
+    if (FAILED(createHr))
+    {
+        std::cerr
+            << "[VirtualCamera] "
+            << "MFCreateVirtualCamera failed: 0x"
+            << std::hex
+            << static_cast<unsigned long>(createHr)
+            << std::dec
+            << std::endl;
+
+        MFShutdown();
+        return false;
+    }
+
+    std::cout
+        << "[VirtualCamera] Virtual camera object created"
+        << std::endl;
+
+    std::cout
+        << "[VirtualCamera] Starting IMFVirtualCamera..."
+        << std::endl;
+
+    HRESULT startHr =
+        camera_->Start(nullptr);
+
+    if (FAILED(startHr))
+    {
+        std::cerr
+            << "[VirtualCamera] "
+            << "IMFVirtualCamera::Start failed: 0x"
+            << std::hex
+            << static_cast<unsigned long>(startHr)
+            << std::dec
+            << std::endl;
+
+        camera_->Shutdown();
+        camera_->Release();
+        camera_ = nullptr;
+
+        MFShutdown();
+
+        return false;
+    }
+
+    started_ = true;
+
+    std::cout
+        << "[VirtualCamera] "
+        << "LensLinks virtual camera started"
+        << std::endl;
+
+    return true;
+}
+
+void VirtualCameraRegistration::stop()
+{
+    if (camera_ != nullptr)
+    {
+        std::cout
+            << "[VirtualCamera] Stopping virtual camera..."
+            << std::endl;
+
+        camera_->Stop();
+        camera_->Shutdown();
+        camera_->Release();
+
+        camera_ = nullptr;
+    }
+
+    if (started_)
+    {
+        started_ = false;
+
+        MFShutdown();
+
+        std::cout
+            << "[VirtualCamera] "
+            << "LensLinks virtual camera stopped"
+            << std::endl;
+    }
+}
+
+bool VirtualCameraRegistration::isStarted() const
+{
+    return started_;
+}

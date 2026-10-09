@@ -1,0 +1,499 @@
+﻿#include "lenslinks_media_stream.h"
+
+#include "lenslinks_media_source.h"
+
+#include "../virtual_camera/virtual_camera.h"
+
+#include <mfapi.h>
+#include <mferror.h>
+#include <mfidl.h>
+#include <mfobjects.h>
+
+#include <iostream>
+#include <vector>
+
+LensLinksMediaStream::LensLinksMediaStream(
+    LensLinksMediaSource* source)
+    : source_(source)
+{
+    if (source_)
+        source_->AddRef();
+
+    HRESULT hr = MFCreateEventQueue(&eventQueue_);
+
+    if (FAILED(hr))
+    {
+        std::cout
+            << "[LensLinksMediaStream] MFCreateEventQueue failed hr=0x"
+            << std::hex
+            << static_cast<unsigned long>(hr)
+            << std::dec
+            << std::endl;
+    }
+
+    std::cout
+        << "[LensLinksMediaStream] created"
+        << std::endl;
+}
+
+LensLinksMediaStream::~LensLinksMediaStream()
+{
+    if (eventQueue_)
+    {
+        eventQueue_->Shutdown();
+        eventQueue_->Release();
+        eventQueue_ = nullptr;
+    }
+
+    if (streamDescriptor_)
+    {
+        streamDescriptor_->Release();
+        streamDescriptor_ = nullptr;
+    }
+
+    if (source_)
+    {
+        source_->Release();
+        source_ = nullptr;
+    }
+
+    std::cout
+        << "[LensLinksMediaStream] destroyed"
+        << std::endl;
+}
+
+// ========================================================
+// IUnknown
+// ========================================================
+
+HRESULT STDMETHODCALLTYPE LensLinksMediaStream::QueryInterface(
+    REFIID riid,
+    void** ppvObject)
+{
+    if (ppvObject == nullptr)
+        return E_POINTER;
+
+    *ppvObject = nullptr;
+
+    if (riid == IID_IUnknown ||
+        riid == IID_IMFMediaEventGenerator ||
+        riid == IID_IMFMediaStream)
+    {
+        *ppvObject =
+            static_cast<IMFMediaStream*>(this);
+
+        AddRef();
+
+        return S_OK;
+    }
+
+    return E_NOINTERFACE;
+}
+
+ULONG STDMETHODCALLTYPE LensLinksMediaStream::AddRef()
+{
+    return static_cast<ULONG>(
+        InterlockedIncrement(&refCount_));
+}
+
+ULONG STDMETHODCALLTYPE LensLinksMediaStream::Release()
+{
+    ULONG count =
+        static_cast<ULONG>(
+            InterlockedDecrement(&refCount_));
+
+    if (count == 0)
+        delete this;
+
+    return count;
+}
+
+// ========================================================
+// IMFMediaEventGenerator
+// ========================================================
+
+HRESULT STDMETHODCALLTYPE LensLinksMediaStream::GetEvent(
+    DWORD dwFlags,
+    IMFMediaEvent** ppEvent)
+{
+    if (ppEvent == nullptr)
+        return E_POINTER;
+
+    *ppEvent = nullptr;
+
+    if (shutdown_)
+        return MF_E_SHUTDOWN;
+
+    if (eventQueue_ == nullptr)
+        return MF_E_NOT_INITIALIZED;
+
+    return eventQueue_->GetEvent(
+        dwFlags,
+        ppEvent);
+}
+
+HRESULT STDMETHODCALLTYPE LensLinksMediaStream::BeginGetEvent(
+    IMFAsyncCallback* pCallback,
+    IUnknown* punkState)
+{
+    if (shutdown_)
+        return MF_E_SHUTDOWN;
+
+    if (eventQueue_ == nullptr)
+        return MF_E_NOT_INITIALIZED;
+
+    return eventQueue_->BeginGetEvent(
+        pCallback,
+        punkState);
+}
+
+HRESULT STDMETHODCALLTYPE LensLinksMediaStream::EndGetEvent(
+    IMFAsyncResult* pResult,
+    IMFMediaEvent** ppEvent)
+{
+    if (ppEvent == nullptr)
+        return E_POINTER;
+
+    *ppEvent = nullptr;
+
+    if (shutdown_)
+        return MF_E_SHUTDOWN;
+
+    if (eventQueue_ == nullptr)
+        return MF_E_NOT_INITIALIZED;
+
+    return eventQueue_->EndGetEvent(
+        pResult,
+        ppEvent);
+}
+
+HRESULT STDMETHODCALLTYPE LensLinksMediaStream::QueueEvent(
+    MediaEventType met,
+    REFGUID guidExtendedType,
+    HRESULT hrStatus,
+    const PROPVARIANT* pvValue)
+{
+    if (shutdown_)
+        return MF_E_SHUTDOWN;
+
+    if (eventQueue_ == nullptr)
+        return MF_E_NOT_INITIALIZED;
+
+    return eventQueue_->QueueEventParamVar(
+        met,
+        guidExtendedType,
+        hrStatus,
+        pvValue);
+}
+
+// ========================================================
+// IMFMediaStream
+// ========================================================
+
+HRESULT STDMETHODCALLTYPE LensLinksMediaStream::GetMediaSource(
+    IMFMediaSource** ppMediaSource)
+{
+    if (ppMediaSource == nullptr)
+        return E_POINTER;
+
+    *ppMediaSource = nullptr;
+
+    if (shutdown_)
+        return MF_E_SHUTDOWN;
+
+    if (source_ == nullptr)
+        return E_UNEXPECTED;
+
+    *ppMediaSource = source_;
+    source_->AddRef();
+
+    return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE LensLinksMediaStream::GetStreamDescriptor(
+    IMFStreamDescriptor** ppStreamDescriptor)
+{
+    if (ppStreamDescriptor == nullptr)
+        return E_POINTER;
+
+    *ppStreamDescriptor = nullptr;
+
+    if (shutdown_)
+        return MF_E_SHUTDOWN;
+
+    if (streamDescriptor_ == nullptr)
+        return MF_E_NOT_INITIALIZED;
+
+    *ppStreamDescriptor = streamDescriptor_;
+    streamDescriptor_->AddRef();
+
+    return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE LensLinksMediaStream::RequestSample(
+    IUnknown* pToken)
+{
+    if (shutdown_)
+        return MF_E_SHUTDOWN;
+
+    if (eventQueue_ == nullptr)
+        return MF_E_NOT_INITIALIZED;
+
+    CameraFrame frame;
+
+    if (!VirtualCamera::instance().getFrame(frame))
+    {
+        std::cout
+            << "[LensLinksMediaStream] no frame available"
+            << std::endl;
+
+        return MF_E_NOT_INITIALIZED;
+    }
+
+    if (frame.width == 0 ||
+        frame.height == 0 ||
+        frame.pixels.empty())
+    {
+        std::cout
+            << "[LensLinksMediaStream] invalid frame"
+            << std::endl;
+
+        return MF_E_NOT_INITIALIZED;
+    }
+
+    std::cout
+        << "[LensLinksMediaStream] RequestSample "
+        << frame.width
+        << "x"
+        << frame.height
+        << " "
+        << frame.pixels.size()
+        << " bytes"
+        << std::endl;
+
+    // ----------------------------------------------------
+    // Create media sample
+    // ----------------------------------------------------
+
+    IMFSample* sample = nullptr;
+
+    HRESULT hr = MFCreateSample(&sample);
+
+    if (FAILED(hr))
+    {
+        std::cout
+            << "[LensLinksMediaStream] MFCreateSample failed hr=0x"
+            << std::hex
+            << static_cast<unsigned long>(hr)
+            << std::dec
+            << std::endl;
+
+        return hr;
+    }
+
+    // ----------------------------------------------------
+    // Create memory buffer
+    // ----------------------------------------------------
+
+    const DWORD bufferSize =
+        static_cast<DWORD>(frame.pixels.size());
+
+    IMFMediaBuffer* buffer = nullptr;
+
+    hr = MFCreateMemoryBuffer(
+        bufferSize,
+        &buffer);
+
+    if (FAILED(hr))
+    {
+        sample->Release();
+
+        std::cout
+            << "[LensLinksMediaStream] MFCreateMemoryBuffer failed hr=0x"
+            << std::hex
+            << static_cast<unsigned long>(hr)
+            << std::dec
+            << std::endl;
+
+        return hr;
+    }
+
+    // ----------------------------------------------------
+    // Copy frame into buffer
+    // ----------------------------------------------------
+
+    BYTE* destination = nullptr;
+    DWORD maxLength = 0;
+    DWORD currentLength = 0;
+
+    hr = buffer->Lock(
+        &destination,
+        &maxLength,
+        &currentLength);
+
+    if (SUCCEEDED(hr))
+    {
+        if (maxLength < bufferSize)
+        {
+            hr = E_OUTOFMEMORY;
+        }
+        else
+        {
+            memcpy(
+                destination,
+                frame.pixels.data(),
+                frame.pixels.size());
+
+            hr = buffer->SetCurrentLength(
+                bufferSize);
+        }
+
+        buffer->Unlock();
+    }
+
+    if (FAILED(hr))
+    {
+        buffer->Release();
+        sample->Release();
+
+        std::cout
+            << "[LensLinksMediaStream] buffer copy failed hr=0x"
+            << std::hex
+            << static_cast<unsigned long>(hr)
+            << std::dec
+            << std::endl;
+
+        return hr;
+    }
+
+    // ----------------------------------------------------
+    // Attach buffer to sample
+    // ----------------------------------------------------
+
+    hr = sample->AddBuffer(buffer);
+
+    buffer->Release();
+
+    if (FAILED(hr))
+    {
+        sample->Release();
+
+        std::cout
+            << "[LensLinksMediaStream] AddBuffer failed hr=0x"
+            << std::hex
+            << static_cast<unsigned long>(hr)
+            << std::dec
+            << std::endl;
+
+        return hr;
+    }
+
+    // ----------------------------------------------------
+    // Frame timing
+    // ----------------------------------------------------
+
+    static LONGLONG frameNumber = 0;
+
+    constexpr LONGLONG FRAME_DURATION =
+        10'000'000LL / 30;
+
+    const LONGLONG sampleTime =
+        frameNumber * FRAME_DURATION;
+
+    ++frameNumber;
+
+    hr = sample->SetSampleTime(sampleTime);
+
+    if (FAILED(hr))
+    {
+        sample->Release();
+        return hr;
+    }
+
+    hr = sample->SetSampleDuration(
+        FRAME_DURATION);
+
+    if (FAILED(hr))
+    {
+        sample->Release();
+        return hr;
+    }
+
+    // ----------------------------------------------------
+    // Create MEMediaSample event
+    // ----------------------------------------------------
+
+    PROPVARIANT value;
+
+    PropVariantInit(&value);
+
+    value.vt = VT_UNKNOWN;
+    value.punkVal = sample;
+
+    sample->AddRef();
+
+    hr = eventQueue_->QueueEventParamVar(
+        MEMediaSample,
+        GUID_NULL,
+        S_OK,
+        &value);
+
+    PropVariantClear(&value);
+
+    // sample original reference
+    sample->Release();
+
+    if (FAILED(hr))
+    {
+        std::cout
+            << "[LensLinksMediaStream] Queue MEMediaSample failed hr=0x"
+            << std::hex
+            << static_cast<unsigned long>(hr)
+            << std::dec
+            << std::endl;
+
+        return hr;
+    }
+
+    // ----------------------------------------------------
+    // Preserve request token if supplied
+    // ----------------------------------------------------
+
+    if (pToken != nullptr)
+    {
+        std::cout
+            << "[LensLinksMediaStream] sample token supplied"
+            << std::endl;
+    }
+
+    std::cout
+        << "[LensLinksMediaStream] MEMediaSample queued"
+        << std::endl;
+
+    return S_OK;
+}
+
+// ========================================================
+// Stream descriptor
+// ========================================================
+
+HRESULT LensLinksMediaStream::setStreamDescriptor(
+    IMFStreamDescriptor* descriptor)
+{
+    if (descriptor == nullptr)
+        return E_POINTER;
+
+    if (shutdown_)
+        return MF_E_SHUTDOWN;
+
+    if (streamDescriptor_)
+    {
+        streamDescriptor_->Release();
+        streamDescriptor_ = nullptr;
+    }
+
+    streamDescriptor_ = descriptor;
+    streamDescriptor_->AddRef();
+
+    return S_OK;
+}

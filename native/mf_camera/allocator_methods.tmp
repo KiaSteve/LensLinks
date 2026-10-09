@@ -1,0 +1,187 @@
+HRESULT STDMETHODCALLTYPE
+LensLinksMediaSource::SetDefaultAllocator(
+    DWORD dwOutputStreamID,
+    IUnknown* pAllocator)
+{
+    std::cout
+        << "[LensLinksMediaSource] SetDefaultAllocator called"
+        << " streamID=" << dwOutputStreamID
+        << " allocator=" << pAllocator
+        << std::endl;
+
+    UNREFERENCED_PARAMETER(pAllocator);
+
+    if (shutdown_)
+    {
+        std::cout
+            << "[LensLinksMediaSource] SetDefaultAllocator -> MF_E_SHUTDOWN"
+            << std::endl;
+        return MF_E_SHUTDOWN;
+    }
+
+    if (stream_ == nullptr)
+    {
+        std::cout
+            << "[LensLinksMediaSource] SetDefaultAllocator -> stream null"
+            << std::endl;
+        return MF_E_NOT_INITIALIZED;
+    }
+
+    IMFStreamDescriptor* descriptor = nullptr;
+
+    HRESULT hr =
+        stream_->GetStreamDescriptor(
+            &descriptor);
+
+    std::cout
+        << "[LensLinksMediaSource] SetDefaultAllocator GetStreamDescriptor hr=0x"
+        << std::hex
+        << static_cast<unsigned long>(hr)
+        << std::dec
+        << std::endl;
+
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    DWORD streamId = 0;
+
+    hr =
+        descriptor->GetStreamIdentifier(
+            &streamId);
+
+    std::cout
+        << "[LensLinksMediaSource] SetDefaultAllocator GetStreamIdentifier hr=0x"
+        << std::hex
+        << static_cast<unsigned long>(hr)
+        << std::dec
+        << " streamId=" << streamId
+        << std::endl;
+
+    descriptor->Release();
+
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    if (dwOutputStreamID != streamId)
+    {
+        std::cout
+            << "[LensLinksMediaSource] SetDefaultAllocator -> MF_E_NOT_FOUND"
+            << std::endl;
+
+        return MF_E_NOT_FOUND;
+    }
+
+    std::cout
+        << "[LensLinksMediaSource] SetDefaultAllocator -> S_OK"
+        << std::endl;
+
+    // Diagnostic only: behavior unchanged.
+    return S_OK;
+}
+
+
+HRESULT STDMETHODCALLTYPE
+LensLinksMediaSource::GetAllocatorUsage(
+    DWORD dwOutputStreamID,
+    DWORD* pdwInputStreamID,
+    MFSampleAllocatorUsage* peUsage)
+{
+    std::cout
+        << "[LensLinksMediaSource] GetAllocatorUsage called"
+        << " streamID=" << dwOutputStreamID
+        << std::endl;
+
+    if (pdwInputStreamID == nullptr ||
+        peUsage == nullptr)
+    {
+        std::cout
+            << "[LensLinksMediaSource] GetAllocatorUsage -> E_POINTER"
+            << std::endl;
+
+        return E_POINTER;
+    }
+
+    *pdwInputStreamID = 0;
+    *peUsage =
+        MFSampleAllocatorUsage_UsesProvidedAllocator;
+
+    if (shutdown_)
+    {
+        std::cout
+            << "[LensLinksMediaSource] GetAllocatorUsage -> MF_E_SHUTDOWN"
+            << std::endl;
+
+        return MF_E_SHUTDOWN;
+    }
+
+    if (stream_ == nullptr)
+    {
+        std::cout
+            << "[LensLinksMediaSource] GetAllocatorUsage -> stream null"
+            << std::endl;
+
+        return MF_E_NOT_INITIALIZED;
+    }
+
+    IMFStreamDescriptor* descriptor = nullptr;
+
+    HRESULT hr =
+        stream_->GetStreamDescriptor(
+            &descriptor);
+
+    std::cout
+        << "[LensLinksMediaSource] GetAllocatorUsage GetStreamDescriptor hr=0x"
+        << std::hex
+        << static_cast<unsigned long>(hr)
+        << std::dec
+        << std::endl;
+
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    DWORD streamId = 0;
+
+    hr =
+        descriptor->GetStreamIdentifier(
+            &streamId);
+
+    descriptor->Release();
+
+    std::cout
+        << "[LensLinksMediaSource] GetAllocatorUsage streamId="
+        << streamId
+        << " hr=0x"
+        << std::hex
+        << static_cast<unsigned long>(hr)
+        << std::dec
+        << std::endl;
+
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    if (dwOutputStreamID != streamId)
+    {
+        std::cout
+            << "[LensLinksMediaSource] GetAllocatorUsage -> MF_E_NOT_FOUND"
+            << std::endl;
+
+        return MF_E_NOT_FOUND;
+    }
+
+    *pdwInputStreamID = streamId;
+
+    std::cout
+        << "[LensLinksMediaSource] GetAllocatorUsage -> S_OK"
+        << " usage=" << static_cast<unsigned long>(*peUsage)
+        << std::endl;
+
+    return S_OK;
+}
