@@ -1,5 +1,7 @@
 #include "virtual_camera.h"
 
+#include "shared_frame.h"
+
 #include <cstring>
 #include <iostream>
 #include <limits>
@@ -159,28 +161,58 @@ bool VirtualCamera::sendFrame(
     frame_.width = width;
     frame_.height = height;
 
+    // ------------------------------------------------------------
+    // Also publish to shared memory. Frame Server loads its own copy
+    // of this DLL in a different process, so it cannot see frame_.
+    // ------------------------------------------------------------
+
+    if (!SharedFrame_Publish(
+            rgba,
+            static_cast<size_t>(size),
+            width,
+            height))
+    {
+        static bool warned = false;
+
+        if (!warned)
+        {
+            warned = true;
+
+            std::cout
+                << "[VirtualCamera] shared-memory publish failed"
+                << std::endl;
+        }
+    }
+
     return true;
 }
 
 bool VirtualCamera::getFrame(
     CameraFrame& frame)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-
-    if (frame_.pixels.empty())
     {
-        return false;
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        if (!frame_.pixels.empty() &&
+            frame_.width > 0 &&
+            frame_.height > 0)
+        {
+            frame = frame_;
+
+            return true;
+        }
     }
 
-    if (frame_.width <= 0 ||
-        frame_.height <= 0)
-    {
-        return false;
-    }
+    // ------------------------------------------------------------
+    // No local frame: we are most likely running inside Frame Server,
+    // so read what the producer process published.
+    // ------------------------------------------------------------
 
-    frame = frame_;
-
-    return true;
+    return SharedFrame_Read(
+        frame.pixels,
+        frame.width,
+        frame.height,
+        1000);
 }
 
 void VirtualCamera::stop()

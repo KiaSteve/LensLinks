@@ -11,6 +11,7 @@
 		<BuildDependency Project="LensLinksNative.vcxproj"/>
 		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
 		<BuildDependency Project="activate_test.vcxproj"/>
+		<BuildDependency Project="producer_test.vcxproj"/>
 		<BuildDependency Project="virtual_camera_test.vcxproj"/>
 		<Build Solution="Debug|*" Project="false"/>
 		<Build Solution="Release|*" Project="false"/>
@@ -22,6 +23,10 @@
 	</Project>
 	<Project Path="ZERO_CHECK.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="4dcaafb0-38a0-3604-9420-25702641d385"/>
 	<Project Path="activate_test.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="93aba7b4-3061-3bdf-88fb-920e2840664a">
+		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
+	</Project>
+	<Project Path="producer_test.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="556ee17f-b286-39d9-9d7e-c466cc948aaa">
+		<BuildDependency Project="LensLinksNative.vcxproj"/>
 		<BuildDependency Project="ZERO_CHECK.vcxproj"/>
 	</Project>
 	<Project Path="virtual_camera_test.vcxproj" Type="8bc9ceb8-8b4a-11d0-8d11-00a0c91bc942" Id="d791aa65-b541-31d3-94af-59ec35040816">

@@ -182,6 +182,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{93ABA7B4-3061-3BDF-88FB-920E2840664A}</Project>
       <Name>activate_test</Name>
     </ProjectReference>
+    <ProjectReference Include="C:\Users\Administrator\lenslinks\native_build\producer_test.vcxproj">
+      <Project>{556EE17F-B286-39D9-9D7E-C466CC948AAA}</Project>
+      <Name>producer_test</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\Users\Administrator\lenslinks\native_build\virtual_camera_test.vcxproj">
       <Project>{D791AA65-B541-31D3-94AF-59EC35040816}</Project>
       <Name>virtual_camera_test</Name>

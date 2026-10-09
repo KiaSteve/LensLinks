@@ -7,6 +7,9 @@
     <ClCompile Include="C:\Users\Administrator\lenslinks\native\virtual_camera\virtual_camera.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\Administrator\lenslinks\native\virtual_camera\shared_frame.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="C:\Users\Administrator\lenslinks\native\mf_camera\lenslinks_media_source_activate.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

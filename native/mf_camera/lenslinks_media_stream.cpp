@@ -585,14 +585,9 @@ LensLinksMediaStream::RequestSample(
     // Obtain camera frame
     // ----------------------------------------------------
 
-    CameraFrame frame;
-
-    if (!VirtualCamera::instance().getFrame(frame))
+    // Pace to about 30 fps. Frame Server requests the next sample as soon
+    // as it receives one, so without this we would spin the CPU.
     {
-        // TEMPORARY: no producer frame (always the case inside Frame
-        // Server), so generate a moving test pattern instead of failing.
-
-        // Crude 30 fps pacing. Test only; it blocks the calling thread.
         static ULONGLONG nextTick = 0;
         const ULONGLONG now = GetTickCount64();
 
@@ -602,6 +597,14 @@ LensLinksMediaStream::RequestSample(
         }
 
         nextTick = (nextTick > now ? nextTick : now) + 33;
+    }
+
+    CameraFrame frame;
+
+    if (!VirtualCamera::instance().getFrame(frame))
+    {
+        // TEMPORARY: no producer frame (always the case inside Frame
+        // Server), so generate a moving test pattern instead of failing.
 
         static unsigned tick = 0;
         ++tick;

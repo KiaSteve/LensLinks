@@ -1,5 +1,6 @@
 C:/Users/Administrator/lenslinks/native_build/CMakeFiles/LensLinksNative.dir
 C:/Users/Administrator/lenslinks/native_build/CMakeFiles/activate_test.dir
 C:/Users/Administrator/lenslinks/native_build/CMakeFiles/virtual_camera_test.dir
+C:/Users/Administrator/lenslinks/native_build/CMakeFiles/producer_test.dir
 C:/Users/Administrator/lenslinks/native_build/CMakeFiles/ALL_BUILD.dir
 C:/Users/Administrator/lenslinks/native_build/CMakeFiles/ZERO_CHECK.dir

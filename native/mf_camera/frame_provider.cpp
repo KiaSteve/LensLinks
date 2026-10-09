@@ -49,21 +49,27 @@ void FrameProvider::stop()
 
 void FrameProvider::worker()
 {
+    unsigned count = 0;
+
     while (running_)
     {
         CameraFrame frame;
 
         if (VirtualCamera::instance().getFrame(frame))
         {
-            std::cout
-                << "[FrameProvider] "
-                << frame.width
-                << "x"
-                << frame.height
-                << "  "
-                << frame.pixels.size()
-                << " bytes"
-                << std::endl;
+            // Log about every 5 seconds instead of every frame.
+            if ((count++ % 150) == 0)
+            {
+                std::cout
+                    << "[FrameProvider] "
+                    << frame.width
+                    << "x"
+                    << frame.height
+                    << "  "
+                    << frame.pixels.size()
+                    << " bytes"
+                    << std::endl;
+            }
         }
 
         std::this_thread::sleep_for(

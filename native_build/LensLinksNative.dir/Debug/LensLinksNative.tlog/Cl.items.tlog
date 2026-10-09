@@ -1,5 +1,6 @@
 C:\Users\Administrator\lenslinks\native\ffi\lenslinks.cpp;C:\Users\Administrator\lenslinks\native_build\LensLinksNative.dir\Debug\lenslinks.obj
 C:\Users\Administrator\lenslinks\native\virtual_camera\virtual_camera.cpp;C:\Users\Administrator\lenslinks\native_build\LensLinksNative.dir\Debug\virtual_camera.obj
+C:\Users\Administrator\lenslinks\native\virtual_camera\shared_frame.cpp;C:\Users\Administrator\lenslinks\native_build\LensLinksNative.dir\Debug\shared_frame.obj
 C:\Users\Administrator\lenslinks\native\mf_camera\lenslinks_media_source_activate.cpp;C:\Users\Administrator\lenslinks\native_build\LensLinksNative.dir\Debug\lenslinks_media_source_activate.obj
 C:\Users\Administrator\lenslinks\native\mf_camera\frame_provider.cpp;C:\Users\Administrator\lenslinks\native_build\LensLinksNative.dir\Debug\frame_provider.obj
 C:\Users\Administrator\lenslinks\native\mf_camera\virtual_camera_registration.cpp;C:\Users\Administrator\lenslinks\native_build\LensLinksNative.dir\Debug\virtual_camera_registration.obj

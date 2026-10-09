@@ -15,6 +15,7 @@ add_library(LensLinksNative SHARED
     ffi/lenslinks.cpp
 
     virtual_camera/virtual_camera.cpp
+    virtual_camera/shared_frame.cpp
     mf_camera/lenslinks_media_source_activate.cpp
 
     mf_camera/frame_provider.cpp
@@ -70,4 +71,15 @@ target_link_libraries(virtual_camera_test
     mf
     mfuuid
     mfsensorgroup
+)
+add_executable(producer_test
+    ../native_tests/producer_test.cpp
+)
+
+target_link_libraries(producer_test
+    LensLinksNative
+    ole32
+    mfplat
+    mf
+    mfuuid
 )
