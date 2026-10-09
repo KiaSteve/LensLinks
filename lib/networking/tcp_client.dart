@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -104,16 +104,23 @@ class TcpClient {
         final decoded = img.decodeJpg(jpeg);
 
         if (decoded != null) {
-          final rgba = decoded.toUint8List();
+          // The native side needs exactly 1280x720 RGBA (4 bytes per pixel).
+          // decodeJpg returns 3-channel RGB, so convert to 4 channels,
+          // and resize if the sender uses another resolution.
+          var frame = decoded;
+          if (frame.width != 1280 || frame.height != 720) {
+            frame = img.copyResize(frame, width: 1280, height: 720);
+          }
+          final rgba = frame.convert(numChannels: 4, alpha: 255).toUint8List();
 
           debugPrint(
-            "Calling native: ${decoded.width}x${decoded.height} (${rgba.length} bytes)",
+            "Calling native: ${frame.width}x${frame.height} (${rgba.length} bytes)",
           );
 
           VirtualCameraBridge.instance.sendFrame(
             rgba,
-            decoded.width,
-            decoded.height,
+            frame.width,
+            frame.height,
           );
 
           debugPrint("Native returned");
