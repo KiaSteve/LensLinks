@@ -1,6 +1,5 @@
 ﻿import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
@@ -20,12 +19,6 @@ class TcpClient {
   VoidCallback? onDisconnected;
 
   bool _disconnecting = false;
-  int _bytesIn = 0;
-  int _framesIn = 0;
-  int _framesDecoded = 0;
-  int _decodeUs = 0;
-  int _totalUs = 0;
-  int _statStartMs = DateTime.now().millisecondsSinceEpoch;
 
   bool get connected => _socket != null;
 
@@ -87,12 +80,6 @@ class TcpClient {
   }
 
   void _onData(Uint8List data) {
-    _bytesIn += data.length;
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    if (nowMs - _statStartMs >= 5000) {
-      debugPrint("NET: ${(_bytesIn * 8 / 1000000 / ((nowMs - _statStartMs) / 1000)).toStringAsFixed(1)} Mbit/s, ${_framesIn / ((nowMs - _statStartMs) / 1000)} frames/s, avg decode ${_framesDecoded == 0 ? 0 : _decodeUs ~/ _framesDecoded} us");
-      debugPrint("PROC: avg total ${_framesDecoded == 0 ? 0 : _totalUs ~/ _framesDecoded} us per frame"); _totalUs = 0; _bytesIn = 0; _framesIn = 0; _decodeUs = 0; _framesDecoded = 0; _statStartMs = nowMs;
-    }
     _buffer.addAll(data);
 
     while (true) {
@@ -107,27 +94,20 @@ class TcpClient {
       if (_buffer.length < frameLength + 4) return;
 
       final jpeg = Uint8List.fromList(_buffer.sublist(4, 4 + frameLength));
-      _framesIn++;
 
       // Flutter preview
       _frameController.add(jpeg);
 
       if (VirtualCameraBridge.instance.hasJpeg) {
         // Native path: the DLL decodes and fits the JPEG, Dart does no pixel work.
-        final swNative = Stopwatch()..start();
         VirtualCameraBridge.instance.sendJpeg(jpeg);
-        _totalUs += swNative.elapsedMicroseconds;
-        _framesDecoded++;
         _buffer.removeRange(0, frameLength + 4);
         continue;
       }
 
       // Send frame to native virtual camera
       try {
-        final sw = Stopwatch()..start();
         final decoded = img.decodeJpg(jpeg);
-        _decodeUs += sw.elapsedMicroseconds;
-        _framesDecoded++;
 
         if (decoded != null) {
           // The native side needs exactly 1280x720 RGBA (4 bytes per pixel).
@@ -144,7 +124,6 @@ class TcpClient {
             frame.width,
             frame.height,
           );
-          _totalUs += sw.elapsedMicroseconds;
         }
       } catch (e) {
         debugPrint("Virtual Camera Error: $e");
