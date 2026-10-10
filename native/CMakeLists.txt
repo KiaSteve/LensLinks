@@ -16,6 +16,7 @@ add_library(LensLinksNative SHARED
 
     virtual_camera/virtual_camera.cpp
     virtual_camera/shared_frame.cpp
+    virtual_camera/jpeg_decode.cpp
     mf_camera/lenslinks_media_source_activate.cpp
 
     mf_camera/frame_provider.cpp
@@ -37,6 +38,7 @@ target_include_directories(LensLinksNative PRIVATE
 
 target_link_libraries(LensLinksNative
     ws2_32
+    windowscodecs
     ole32
     mfplat
     mf

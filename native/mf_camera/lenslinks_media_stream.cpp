@@ -215,22 +215,6 @@ LensLinksMediaStream::QueryInterface(
 
     *ppvObject = nullptr;
 
-    // Diagnostic logging
-    LPOLESTR iidString = nullptr;
-
-    if (SUCCEEDED(
-            StringFromIID(
-                riid,
-                &iidString)))
-    {
-        std::cout
-            << "[LensLinksMediaStream] QueryInterface: "
-            << ll_narrow(iidString)
-            << std::endl;
-
-        CoTaskMemFree(iidString);
-    }
-
     if (riid == IID_IUnknown)
     {
         *ppvObject =
@@ -255,10 +239,19 @@ LensLinksMediaStream::QueryInterface(
     }
     else
     {
-        std::cout
-            << "[LensLinksMediaStream] QueryInterface: "
-            << "E_NOINTERFACE"
-            << std::endl;
+        {
+        static LONG refusedCount = 0;
+        if (InterlockedIncrement(&refusedCount) <= 20)
+        {
+            LPOLESTR refused = nullptr;
+            if (SUCCEEDED(StringFromIID(riid, &refused)))
+            {
+                std::cout << "[LensLinks] QueryInterface refused (first 20): "
+                          << ll_narrow(refused) << std::endl;
+                CoTaskMemFree(refused);
+            }
+        }
+    }
 
         return E_NOINTERFACE;
     }
@@ -551,7 +544,6 @@ HRESULT STDMETHODCALLTYPE
 LensLinksMediaStream::RequestSample(
     IUnknown* pToken)
 {
-    std::cout << "[LensLinksMediaStream] RequestSample called" << std::endl;
     if (shutdown_)
     {
         return MF_E_SHUTDOWN;
@@ -968,16 +960,7 @@ LensLinksMediaStream::RequestSample(
         return hr;
     }
 
-    std::cout
-        << "[LensLinksMediaStream] "
-        << "MEMediaSample queued "
-        << frame.width
-        << "x"
-        << frame.height
-        << " RGB32 "
-        << bufferSize
-        << " bytes"
-        << std::endl;
+    { static unsigned logCount = 0; if ((logCount++ % 150) == 0) { std::cout << "[LensLinksMediaStream] MEMediaSample queued (every 150th) " << frame.width << "x" << frame.height << std::endl; } }
 
     return S_OK;
 }

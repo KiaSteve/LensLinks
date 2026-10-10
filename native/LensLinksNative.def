@@ -6,3 +6,4 @@ EXPORTS
     LL_Initialize
     LL_Shutdown
     LL_WriteFrame
+    LL_WriteJpeg

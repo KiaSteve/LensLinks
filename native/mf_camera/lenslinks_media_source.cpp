@@ -308,22 +308,6 @@ LensLinksMediaSource::QueryInterface(
 
     *ppvObject = nullptr;
 
-    // Diagnostic logging
-    LPOLESTR iidString = nullptr;
-
-    if (SUCCEEDED(
-            StringFromIID(
-                riid,
-                &iidString)))
-    {
-        std::cout
-            << "[LensLinksMediaSource] QueryInterface: "
-            << ll_narrow(iidString)
-            << std::endl;
-
-        CoTaskMemFree(iidString);
-    }
-
     if (riid == IID_IUnknown)
     {
         *ppvObject =
@@ -351,6 +335,10 @@ LensLinksMediaSource::QueryInterface(
         *ppvObject =
             static_cast<IMFGetService*>(this);
     }
+    else if (riid == __uuidof(IKsControl))
+    {
+        *ppvObject = static_cast<IKsControl*>(this);
+    }
     else if (riid == __uuidof(ILensLinksMediaSourceTest))
     {
         *ppvObject =
@@ -358,10 +346,19 @@ LensLinksMediaSource::QueryInterface(
     }
     else
     {
-        std::cout
-            << "[LensLinksMediaSource] QueryInterface: "
-            << "E_NOINTERFACE"
-            << std::endl;
+        {
+        static LONG refusedCount = 0;
+        if (InterlockedIncrement(&refusedCount) <= 20)
+        {
+            LPOLESTR refused = nullptr;
+            if (SUCCEEDED(StringFromIID(riid, &refused)))
+            {
+                std::cout << "[LensLinks] QueryInterface refused (first 20): "
+                          << ll_narrow(refused) << std::endl;
+                CoTaskMemFree(refused);
+            }
+        }
+    }
 
         return E_NOINTERFACE;
     }

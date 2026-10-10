@@ -19,4 +19,6 @@ extern "C"
         int size,
         int width,
         int height);
+
+    LL_EXPORT bool LL_WriteJpeg(const uint8_t* jpeg, int size);
 }

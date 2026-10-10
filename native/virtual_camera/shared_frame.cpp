@@ -263,6 +263,16 @@ bool SharedFrame_Publish(
     h->frameBytes = static_cast<uint32_t>(size);
     h->lastWriteTick = GetTickCount64();
 
+    {
+        static ULONGLONG lastPublishTick = 0;
+        const ULONGLONG nowTick = h->lastWriteTick;
+        if (lastPublishTick != 0 && nowTick - lastPublishTick > 300)
+        {
+            std::cout << "[SharedFrame] publish gap " << (nowTick - lastPublishTick) << " ms" << std::endl;
+        }
+        lastPublishTick = nowTick;
+    }
+
     InterlockedIncrement(&h->seq); // even: frame complete
 
     return true;

@@ -212,7 +212,7 @@ bool VirtualCamera::getFrame(
         frame.pixels,
         frame.width,
         frame.height,
-        1000);
+        3000);
 }
 
 void VirtualCamera::stop()

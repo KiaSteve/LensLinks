@@ -1,4 +1,4 @@
-import 'dart:ffi';
+﻿import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -15,6 +15,7 @@ class VirtualCameraBridge {
   late final LLInitialize _initialize;
   late final LLShutdown _shutdown;
   late final LLWriteFrame _writeFrame;
+  LLWriteJpeg? _writeJpeg;
 
   bool _loaded = false;
 
@@ -35,6 +36,14 @@ class VirtualCameraBridge {
       "LL_WriteFrame",
     );
 
+    try {
+      _writeJpeg = _library.lookupFunction<LLWriteJpegNative, LLWriteJpeg>(
+        "LL_WriteJpeg",
+      );
+    } catch (_) {
+      _writeJpeg = null;
+    }
+
     _initialize();
 
     _loaded = true;
@@ -51,6 +60,23 @@ class VirtualCameraBridge {
     _writeFrame(ptr, rgba.length, width, height);
 
     malloc.free(ptr);
+  }
+
+  bool get hasJpeg => _loaded && _writeJpeg != null;
+
+  /// Hands a JPEG straight to the native side, which decodes it and fits it
+  /// into the camera frame (letterboxed).
+  void sendJpeg(Uint8List jpeg) {
+    final write = _writeJpeg;
+    if (!_loaded || write == null) return;
+
+    final ptr = malloc<Uint8>(jpeg.length);
+    try {
+      ptr.asTypedList(jpeg.length).setAll(0, jpeg);
+      write(ptr, jpeg.length);
+    } finally {
+      malloc.free(ptr);
+    }
   }
 
   void dispose() {
