@@ -1,9 +1,0 @@
-LIBRARY LensLinksNative
-
-EXPORTS
-    DllGetClassObject
-    DllCanUnloadNow
-    LL_Initialize
-    LL_Shutdown
-    LL_WriteFrame
-    LL_WriteJpeg
