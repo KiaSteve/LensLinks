@@ -7,3 +7,5 @@ EXPORTS
     LL_Shutdown
     LL_WriteFrame
     LL_WriteJpeg
+    DllRegisterServer PRIVATE
+    DllUnregisterServer PRIVATE

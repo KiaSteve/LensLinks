@@ -25,6 +25,7 @@ add_library(LensLinksNative SHARED
     mf_camera/lenslinks_media_stream.cpp
     mf_camera/lenslinks_com.cpp
     mf_camera/ll_logging.cpp
+    mf_camera/lenslinks_register.cpp
 
     LensLinksNative.def
 )

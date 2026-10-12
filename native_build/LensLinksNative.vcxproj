@@ -380,6 +380,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\Administrator\lenslinks\native\mf_camera\lenslinks_media_stream.cpp" />
     <ClCompile Include="C:\Users\Administrator\lenslinks\native\mf_camera\lenslinks_com.cpp" />
     <ClCompile Include="C:\Users\Administrator\lenslinks\native\mf_camera\ll_logging.cpp" />
+    <ClCompile Include="C:\Users\Administrator\lenslinks\native\mf_camera\lenslinks_register.cpp" />
     <None Include="C:\Users\Administrator\lenslinks\native\LensLinksNative.def" />
   </ItemGroup>
   <ItemGroup />

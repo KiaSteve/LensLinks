@@ -34,6 +34,9 @@
     <ClCompile Include="C:\Users\Administrator\lenslinks\native\mf_camera\ll_logging.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\Administrator\lenslinks\native\mf_camera\lenslinks_register.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="C:\Users\Administrator\lenslinks\native\CMakeLists.txt" />
