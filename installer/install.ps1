@@ -72,6 +72,7 @@ New-Item -ItemType Directory -Force $dataDir | Out-Null
 #   Users                     : modify (the app writes frames and the log)
 #   LOCAL SERVICE             : read and execute (Frame Server only reads frames)
 & icacls $dataDir /inheritance:r | Out-Null
+& icacls $dataDir /remove:g '*S-1-1-0' '*S-1-15-2-1' | Out-Null
 & icacls $dataDir /grant:r `
     '*S-1-5-18:(OI)(CI)F' `
     '*S-1-5-32-544:(OI)(CI)F' `
@@ -88,3 +89,4 @@ Write-Host "Permissions set on $dataDir"
 
 Write-Host ''
 Write-Host 'LensLinks installed. Start the app and the camera will appear as "LensLinks Camera".' -ForegroundColor Green
+
