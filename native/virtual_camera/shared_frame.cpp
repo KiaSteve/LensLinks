@@ -266,7 +266,7 @@ bool SharedFrame_Publish(
     {
         static ULONGLONG lastPublishTick = 0;
         const ULONGLONG nowTick = h->lastWriteTick;
-        if (lastPublishTick != 0 && nowTick - lastPublishTick > 300)
+        if (lastPublishTick != 0 && nowTick - lastPublishTick > 1000)
         {
             std::cout << "[SharedFrame] publish gap " << (nowTick - lastPublishTick) << " ms" << std::endl;
         }
