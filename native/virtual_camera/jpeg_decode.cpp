@@ -6,11 +6,14 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <atomic>
 
 using Microsoft::WRL::ComPtr;
 
 namespace
 {
+    std::atomic<int> g_rotation(0);
+
     bool decodeInternal(
         const uint8_t* jpeg,
         size_t size,
@@ -49,9 +52,35 @@ namespace
         hr = decoder->GetFrame(0, &frame);
         if (FAILED(hr)) return false;
 
+        ComPtr<IWICBitmapSource> source;
+        hr = frame.As(&source);
+        if (FAILED(hr)) return false;
+
+        // Optional rotation, applied before measuring and scaling.
+        const int rotation = g_rotation.load();
+
+        if (rotation != 0)
+        {
+            WICBitmapTransformOptions options = WICBitmapTransformRotate90;
+
+            if (rotation == 180) options = WICBitmapTransformRotate180;
+            else if (rotation == 270) options = WICBitmapTransformRotate270;
+
+            ComPtr<IWICBitmapFlipRotator> rotator;
+            hr = factory->CreateBitmapFlipRotator(&rotator);
+            if (FAILED(hr)) return false;
+
+            hr = rotator->Initialize(source.Get(), options);
+            if (FAILED(hr)) return false;
+
+            source.Reset();
+            hr = rotator.As(&source);
+            if (FAILED(hr)) return false;
+        }
+
         UINT srcW = 0;
         UINT srcH = 0;
-        hr = frame->GetSize(&srcW, &srcH);
+        hr = source->GetSize(&srcW, &srcH);
         if (FAILED(hr) || srcW == 0 || srcH == 0) return false;
 
         const double scale = (std::min)(
@@ -62,10 +91,6 @@ namespace
         UINT dstH = static_cast<UINT>(srcH * scale + 0.5);
         dstW = (std::max)(static_cast<UINT>(1), (std::min)(dstW, static_cast<UINT>(outW)));
         dstH = (std::max)(static_cast<UINT>(1), (std::min)(dstH, static_cast<UINT>(outH)));
-
-        ComPtr<IWICBitmapSource> source;
-        hr = frame.As(&source);
-        if (FAILED(hr)) return false;
 
         if (dstW != srcW || dstH != srcH)
         {
@@ -137,6 +162,15 @@ namespace
 
         return true;
     }
+}
+
+void SetJpegRotationDegrees(int degrees)
+{
+    int normalized = (degrees / 90) * 90;
+    normalized %= 360;
+    if (normalized < 0) normalized += 360;
+
+    g_rotation.store(normalized);
 }
 
 bool DecodeJpegLetterboxRgba(

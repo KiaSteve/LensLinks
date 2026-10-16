@@ -21,4 +21,6 @@ extern "C"
         int height);
 
     LL_EXPORT bool LL_WriteJpeg(const uint8_t* jpeg, int size);
+
+    LL_EXPORT void LL_SetRotation(int degrees);
 }

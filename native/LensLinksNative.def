@@ -7,5 +7,6 @@ EXPORTS
     LL_Shutdown
     LL_WriteFrame
     LL_WriteJpeg
+    LL_SetRotation
     DllRegisterServer PRIVATE
     DllUnregisterServer PRIVATE

@@ -109,3 +109,9 @@ LL_EXPORT bool LL_WriteJpeg(
         1280,
         720);
 }
+
+
+LL_EXPORT void LL_SetRotation(int degrees)
+{
+    SetJpegRotationDegrees(degrees);
+}
