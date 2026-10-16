@@ -595,29 +595,24 @@ LensLinksMediaStream::RequestSample(
 
     if (!VirtualCamera::instance().getFrame(frame))
     {
-        // TEMPORARY: no producer frame (always the case inside Frame
-        // Server), so generate a moving test pattern instead of failing.
+        // No producer frame (the app is running but no phone is streaming,
+        // or the producer stopped). Show one dark-gray "no signal" frame,
+        // built once and reused.
+        static std::vector<uint8_t> noSignal;
 
-        static unsigned tick = 0;
-        ++tick;
+        if (noSignal.empty())
+        {
+            noSignal.assign(1280u * 720u * 4u, 0x28);
+
+            for (size_t i = 3; i < noSignal.size(); i += 4)
+            {
+                noSignal[i] = 255;
+            }
+        }
 
         frame.width = 1280;
         frame.height = 720;
-        frame.pixels.assign(1280u * 720u * 4u, 0);
-
-        for (int y = 0; y < 720; ++y)
-        {
-            for (int x = 0; x < 1280; ++x)
-            {
-                const size_t i =
-                    (static_cast<size_t>(y) * 1280u + x) * 4u;
-
-                frame.pixels[i + 0] = static_cast<unsigned char>(x + tick * 4); // B
-                frame.pixels[i + 1] = static_cast<unsigned char>(y);            // G
-                frame.pixels[i + 2] = static_cast<unsigned char>(tick * 8);     // R
-                frame.pixels[i + 3] = 255;
-            }
-        }
+        frame.pixels = noSignal;
     }
 
     // ----------------------------------------------------

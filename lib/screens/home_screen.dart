@@ -1,4 +1,4 @@
-import 'dart:typed_data';
+﻿import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
@@ -22,12 +22,19 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Device> devices = [];
 
   bool scanning = false;
+  bool scanned = false;
+  bool connecting = false;
   bool fullscreen = false;
   bool reconnecting = false;
 
   Uint8List? currentFrame;
 
+  // The phone we are connected to. null means "not connected, and do not
+  // reconnect automatically".
   String? lastIp;
+
+  bool get isConnected =>
+      lastIp != null && !reconnecting && !connecting && tcpClient.connected;
 
   @override
   void initState() {
@@ -57,49 +64,100 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  List<Device> _withConnected(String? ip) {
+    return devices
+        .map(
+          (d) => Device(
+            id: d.id,
+            name: d.name,
+            ip: d.ip,
+            port: d.port,
+            connected: ip != null && d.ip == ip,
+          ),
+        )
+        .toList();
+  }
+
   Future<void> scanNetwork() async {
+    if (scanning || connecting) return;
+
     setState(() {
       scanning = true;
-      devices.clear();
+      scanned = false;
+      devices = [];
+    });
+
+    List<Device> results = [];
+
+    try {
+      results = await discovery.scanNetwork();
+    } catch (e) {
+      debugPrint("Scan error: $e");
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      devices = results;
+      scanning = false;
+      scanned = true;
+    });
+
+    // Exactly one phone answered: connect to it straight away.
+    if (results.length == 1) {
+      await connectTo(results.first);
+    }
+  }
+
+  Future<void> connectTo(Device device) async {
+    if (connecting) return;
+
+    // Forget any previous phone so a failed attempt cannot trigger the
+    // automatic reconnect to an old address.
+    lastIp = null;
+
+    setState(() {
+      connecting = true;
     });
 
     try {
-      final results = await discovery.scanNetwork();
+      await tcpClient.connect(device.ip);
 
-      if (results.isNotEmpty) {
-        final phone = results.first;
-
-        await tcpClient.connect(phone.ip);
-
-        lastIp = phone.ip;
-
-        results[0] = Device(
-          id: phone.id,
-          name: phone.name,
-          ip: phone.ip,
-          port: phone.port,
-          connected: true,
-        );
-      }
-
-      if (mounted) {
-        setState(() {
-          devices = results;
-        });
+      if (tcpClient.connected) {
+        lastIp = device.ip;
+      } else {
+        debugPrint("Could not connect to ${device.ip}");
       }
     } catch (e) {
-      debugPrint("Scan error: $e");
+      debugPrint("Connect error: $e");
     } finally {
       if (mounted) {
         setState(() {
-          scanning = false;
+          connecting = false;
+          devices = _withConnected(lastIp);
         });
       }
     }
   }
 
+  Future<void> disconnect() async {
+    // Forget the phone first, so the automatic reconnect does not kick in.
+    lastIp = null;
+
+    await tcpClient.disconnect();
+
+    if (!mounted) return;
+
+    setState(() {
+      currentFrame = null;
+      devices = _withConnected(null);
+    });
+  }
+
   Future<void> reconnect() async {
-    if (lastIp == null || reconnecting) return;
+    final ip = lastIp;
+
+    if (ip == null || reconnecting) return;
 
     if (!mounted) return;
 
@@ -112,22 +170,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
       await Future.delayed(const Duration(seconds: 1));
 
-      await tcpClient.connect(lastIp!);
+      // The user may have disconnected or picked another phone meanwhile.
+      if (lastIp != ip) return;
+
+      await tcpClient.connect(ip);
 
       if (!mounted) return;
 
       setState(() {
-        devices = devices
-            .map(
-              (d) => Device(
-                id: d.id,
-                name: d.name,
-                ip: d.ip,
-                port: d.port,
-                connected: d.ip == lastIp,
-              ),
-            )
-            .toList();
+        devices = _withConnected(tcpClient.connected ? ip : null);
       });
     } catch (_) {
       Future.delayed(const Duration(seconds: 2), reconnect);
@@ -146,9 +197,67 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  Widget _deviceList() {
+    const hintStyle = TextStyle(color: Colors.white70, fontSize: 16);
+
+    if (scanning) {
+      return const Center(
+        child: Text("Looking for your phone...", style: hintStyle),
+      );
+    }
+
+    if (connecting) {
+      return const Center(child: Text("Connecting...", style: hintStyle));
+    }
+
+    if (devices.isEmpty) {
+      return Center(
+        child: Text(
+          scanned
+              ? "No devices found. Open the phone app on the same Wi-Fi, then scan again."
+              : "Press Scan to look for your phone.",
+          textAlign: TextAlign.center,
+          style: hintStyle,
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: devices.length,
+      itemBuilder: (context, index) {
+        final device = devices[index];
+
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => connectTo(device),
+          child: DeviceCard(
+            name: device.name,
+            address: "${device.ip}:${device.port}",
+            connected: device.connected,
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final connected = lastIp != null && !reconnecting;
+    final connected = isConnected;
+    final busy = connecting || reconnecting;
+
+    final statusText = reconnecting
+        ? "Reconnecting..."
+        : connecting
+        ? "Connecting..."
+        : connected
+        ? "Android Connected"
+        : "Not Connected";
+
+    final statusColor = connected
+        ? Colors.green
+        : busy
+        ? Colors.orange
+        : Colors.red;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -181,24 +290,26 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.all(20),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.circle,
-                    size: 14,
-                    color: connected ? Colors.green : Colors.red,
-                  ),
+                  Icon(Icons.circle, size: 14, color: statusColor),
                   const SizedBox(width: 8),
                   Text(
-                    reconnecting
-                        ? "Reconnecting..."
-                        : connected
-                        ? "Android Connected"
-                        : "Not Connected",
+                    statusText,
                     style: const TextStyle(color: Colors.white, fontSize: 18),
                   ),
                   const Spacer(),
-                  if (!connected)
+                  if (connected)
+                    OutlinedButton.icon(
+                      onPressed: disconnect,
+                      icon: const Icon(Icons.link_off),
+                      label: const Text("Disconnect"),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: const BorderSide(color: Colors.white54),
+                      ),
+                    )
+                  else
                     FilledButton.icon(
-                      onPressed: scanning ? null : scanNetwork,
+                      onPressed: (scanning || connecting) ? null : scanNetwork,
                       icon: scanning
                           ? const SizedBox(
                               width: 18,
@@ -225,18 +336,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     top: Radius.circular(24),
                   ),
                 ),
-                child: ListView.builder(
-                  itemCount: devices.length,
-                  itemBuilder: (context, index) {
-                    final device = devices[index];
-
-                    return DeviceCard(
-                      name: device.name,
-                      address: "${device.ip}:${device.port}",
-                      connected: device.connected,
-                    );
-                  },
-                ),
+                child: _deviceList(),
               ),
             ),
 
