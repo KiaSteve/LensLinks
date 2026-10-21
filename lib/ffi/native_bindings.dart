@@ -12,3 +12,6 @@ typedef LLWriteFrame = bool Function(Pointer<Uint8>, int, int, int);
 
 typedef LLWriteJpegNative = Bool Function(Pointer<Uint8>, Int32);
 typedef LLWriteJpeg = bool Function(Pointer<Uint8>, int);
+
+typedef LLSetRotationNative = Void Function(Int32);
+typedef LLSetRotation = void Function(int);

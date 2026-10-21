@@ -16,6 +16,7 @@ class VirtualCameraBridge {
   late final LLShutdown _shutdown;
   late final LLWriteFrame _writeFrame;
   LLWriteJpeg? _writeJpeg;
+  LLSetRotation? _setRotation;
 
   bool _loaded = false;
 
@@ -44,6 +45,14 @@ class VirtualCameraBridge {
       _writeJpeg = null;
     }
 
+    try {
+      _setRotation = _library.lookupFunction<LLSetRotationNative, LLSetRotation>(
+        "LL_SetRotation",
+      );
+    } catch (_) {
+      _setRotation = null;
+    }
+
     _initialize();
 
     _loaded = true;
@@ -60,6 +69,15 @@ class VirtualCameraBridge {
     _writeFrame(ptr, rgba.length, width, height);
 
     malloc.free(ptr);
+  }
+
+  /// Rotates what the virtual camera sends: 0, 90, 180 or 270 degrees clockwise.
+  /// Returns false if the native library is too old to support it.
+  bool setRotation(int degrees) {
+    final set = _setRotation;
+    if (!_loaded || set == null) return false;
+    set(degrees);
+    return true;
   }
 
   bool get hasJpeg => _loaded && _writeJpeg != null;

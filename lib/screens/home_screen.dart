@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../ffi/virtual_camera_bridge.dart';
 import '../models/device.dart';
 import '../networking/tcp_client.dart';
 import '../services/discovery_service.dart';
@@ -26,6 +27,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool connecting = false;
   bool fullscreen = false;
   bool reconnecting = false;
+
+  // Rotation applied to the virtual camera and the preview, in degrees clockwise.
+  int rotation = 0;
 
   Uint8List? currentFrame;
 
@@ -52,6 +56,20 @@ class _HomeScreenState extends State<HomeScreen> {
     tcpClient.onDisconnected = () {
       reconnect();
     };
+  }
+
+  void rotate() {
+    final next = (rotation + 90) % 360;
+
+    // Tell the virtual camera first. If the native library is too old to
+    // support rotation, leave the preview alone so the two cannot disagree.
+    if (VirtualCameraBridge.instance.setRotation(next)) {
+      setState(() {
+        rotation = next;
+      });
+    } else {
+      debugPrint("Rotation is not supported by the installed native library");
+    }
   }
 
   Future<void> toggleFullscreen() async {
@@ -275,11 +293,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     minScale: 1,
                     maxScale: 4,
                     child: SizedBox.expand(
-                      child: Image.memory(
-                        currentFrame!,
-                        fit: BoxFit.cover,
-                        gaplessPlayback: true,
-                        filterQuality: FilterQuality.high,
+                      child: RotatedBox(
+                        quarterTurns: rotation ~/ 90,
+                        child: Image.memory(
+                          currentFrame!,
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                          filterQuality: FilterQuality.high,
+                        ),
                       ),
                     ),
                   ),
@@ -366,7 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             icon: const Icon(Icons.screen_rotation),
                             color: Colors.white,
                             tooltip: "Rotate",
-                            onPressed: () {},
+                            onPressed: rotate,
                           ),
 
                           IconButton(

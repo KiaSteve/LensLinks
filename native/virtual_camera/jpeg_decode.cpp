@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <iostream>
 
 using Microsoft::WRL::ComPtr;
 
@@ -61,6 +62,21 @@ namespace
 
         if (rotation != 0)
         {
+            // A JPEG decoder can only produce rows top to bottom, while a
+            // rotator reads its source in another order, which can force the
+            // JPEG to be decoded again and again. Decode once into memory
+            // first, then rotate from the in-memory copy.
+            ComPtr<IWICBitmap> cached;
+            hr = factory->CreateBitmapFromSource(
+                source.Get(),
+                WICBitmapCacheOnLoad,
+                &cached);
+            if (FAILED(hr)) return false;
+
+            source.Reset();
+            hr = cached.As(&source);
+            if (FAILED(hr)) return false;
+
             WICBitmapTransformOptions options = WICBitmapTransformRotate90;
 
             if (rotation == 180) options = WICBitmapTransformRotate180;
@@ -194,7 +210,27 @@ bool DecodeJpegLetterboxRgba(
         return false;
     }
 
+    const ULONGLONG started = GetTickCount64();
+
     const bool ok = decodeInternal(jpeg, size, outW, outH, rgba);
+
+    const ULONGLONG elapsed = GetTickCount64() - started;
+
+    // Diagnostic: report decodes slower than 100 ms, at most once a second.
+    if (elapsed > 100)
+    {
+        static std::atomic<ULONGLONG> lastLog(0);
+
+        if (started - lastLog.load() > 1000)
+        {
+            lastLog.store(started);
+
+            std::cout
+                << "[JpegDecode] slow decode: " << elapsed
+                << " ms (rotation " << g_rotation.load() << ")"
+                << std::endl;
+        }
+    }
 
     if (SUCCEEDED(initHr))
     {
