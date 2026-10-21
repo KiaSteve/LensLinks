@@ -1,6 +1,12 @@
 // ll_logging.cpp
-// Copies std::cout / std::cerr into C:\ProgramData\LensLinks\log.txt with
-// time, pid and tid, while keeping the normal console output.
+//
+// Copies everything written to std::cout / std::cerr inside this DLL into
+// C:\ProgramData\LensLinks\log.txt, prefixed with time, process id and
+// thread id. The original console output is preserved, so test programs
+// still print to their console.
+//
+// If log.txt is larger than kMaxLogBytes when the DLL loads, it is moved to
+// log.old.txt (replacing any older copy) before a fresh log is started.
 
 #include <windows.h>
 #include <share.h>
@@ -13,6 +19,36 @@
 
 namespace
 {
+    constexpr wchar_t kLogDir[] = L"C:\\ProgramData\\LensLinks";
+    constexpr wchar_t kLogPath[] = L"C:\\ProgramData\\LensLinks\\log.txt";
+    constexpr wchar_t kOldLogPath[] = L"C:\\ProgramData\\LensLinks\\log.old.txt";
+
+    // Rotate when the log is bigger than this.
+    constexpr ULONGLONG kMaxLogBytes = 2ull * 1024ull * 1024ull;
+
+    // Moves an oversized log aside. If another process has the file open the
+    // move fails, and that is fine: we simply keep appending to it.
+    void rotateLogIfNeeded()
+    {
+        WIN32_FILE_ATTRIBUTE_DATA info;
+
+        if (!GetFileAttributesExW(kLogPath, GetFileExInfoStandard, &info))
+        {
+            return; // no log yet
+        }
+
+        const ULONGLONG size =
+            (static_cast<ULONGLONG>(info.nFileSizeHigh) << 32) |
+            info.nFileSizeLow;
+
+        if (size <= kMaxLogBytes)
+        {
+            return;
+        }
+
+        MoveFileExW(kLogPath, kOldLogPath, MOVEFILE_REPLACE_EXISTING);
+    }
+
     std::mutex& logMutex()
     {
         static std::mutex m;
@@ -37,6 +73,8 @@ namespace
 
             const char c = traits_type::to_char_type(ch);
 
+            // Keep the normal console output (ignore failures: a service
+            // has no console and that must not break file logging).
             if (original_ != nullptr)
             {
                 original_->sputc(c);
@@ -64,6 +102,8 @@ namespace
                 GetCurrentProcessId(),
                 GetCurrentThreadId());
 
+            // One write per line so lines from different processes
+            // are less likely to interleave.
             std::string out = prefix;
             out += line_;
             out += '\n';
@@ -102,8 +142,12 @@ namespace
 
         LogRedirect()
         {
-            CreateDirectoryW(L"C:\\ProgramData\\LensLinks", nullptr);
+            CreateDirectoryW(kLogDir, nullptr);
 
+            rotateLogIfNeeded();
+
+            // _SH_DENYNO lets several processes (your test app and the
+            // Frame Server svchost) append to the same file.
             file = _fsopen(
                 "C:\\ProgramData\\LensLinks\\log.txt",
                 "a",
@@ -140,5 +184,6 @@ namespace
         }
     };
 
+    // Constructed when the DLL is loaded, destroyed when it is unloaded.
     LogRedirect g_logRedirect;
 }
