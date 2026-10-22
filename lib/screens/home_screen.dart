@@ -1,6 +1,8 @@
-﻿import 'dart:typed_data';
+﻿import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import 'package:window_manager/window_manager.dart';
 
 import '../ffi/virtual_camera_bridge.dart';
@@ -56,6 +58,61 @@ class _HomeScreenState extends State<HomeScreen> {
     tcpClient.onDisconnected = () {
       reconnect();
     };
+  }
+
+  void _showMessage(String text) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(text)),
+    );
+  }
+
+  Future<void> snapshot() async {
+    final frame = currentFrame;
+
+    if (frame == null) {
+      _showMessage("No picture to save yet");
+      return;
+    }
+
+    try {
+      var bytes = frame;
+
+      // Match what the preview shows: apply the current rotation.
+      if (rotation != 0) {
+        final decoded = img.decodeJpg(frame);
+
+        if (decoded != null) {
+          final turned = img.copyRotate(decoded, angle: rotation);
+          bytes = Uint8List.fromList(img.encodeJpg(turned, quality: 95));
+        }
+      }
+
+      final home = Platform.environment['USERPROFILE'];
+
+      if (home == null) {
+        _showMessage("Snapshot failed: cannot find your user folder");
+        return;
+      }
+
+      final folder = Directory('$home\\Pictures\\LensLinks');
+      await folder.create(recursive: true);
+
+      final now = DateTime.now();
+      String two(int v) => v.toString().padLeft(2, '0');
+
+      final name =
+          'LensLinks_${now.year}${two(now.month)}${two(now.day)}_'
+          '${two(now.hour)}${two(now.minute)}${two(now.second)}.jpg';
+
+      final file = File('${folder.path}\\$name');
+      await file.writeAsBytes(bytes);
+
+      _showMessage("Saved ${file.path}");
+    } catch (e) {
+      _showMessage("Snapshot failed: $e");
+    }
   }
 
   void rotate() {
@@ -380,7 +437,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             icon: const Icon(Icons.camera_alt),
                             color: Colors.white,
                             tooltip: "Snapshot",
-                            onPressed: () {},
+                            onPressed: snapshot,
                           ),
 
                           IconButton(
