@@ -297,7 +297,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         quarterTurns: rotation ~/ 90,
                         child: Image.memory(
                           currentFrame!,
-                          fit: BoxFit.cover,
+                          fit: BoxFit.contain,
                           gaplessPlayback: true,
                           filterQuality: FilterQuality.high,
                         ),
