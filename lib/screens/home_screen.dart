@@ -46,6 +46,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
 
+    rotation = _loadRotation();
+
     tcpClient.frames.listen((frame) {
       if (!mounted) return;
 
@@ -58,6 +60,41 @@ class _HomeScreenState extends State<HomeScreen> {
     tcpClient.onDisconnected = () {
       reconnect();
     };
+  }
+
+  File? _settingsFile() {
+    final appData = Platform.environment['APPDATA'];
+
+    if (appData == null) return null;
+
+    return File('$appData\\LensLinks\\settings.txt');
+  }
+
+  int _loadRotation() {
+    try {
+      final file = _settingsFile();
+
+      if (file == null || !file.existsSync()) return 0;
+
+      final value = int.tryParse(file.readAsStringSync().trim()) ?? 0;
+
+      return (value == 90 || value == 180 || value == 270) ? value : 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  void _saveRotation(int degrees) {
+    try {
+      final file = _settingsFile();
+
+      if (file == null) return;
+
+      file.parent.createSync(recursive: true);
+      file.writeAsStringSync('$degrees');
+    } catch (e) {
+      debugPrint("Could not save rotation: $e");
+    }
   }
 
   void _showMessage(String text) {
@@ -121,6 +158,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Tell the virtual camera first. If the native library is too old to
     // support rotation, leave the preview alone so the two cannot disagree.
     if (VirtualCameraBridge.instance.setRotation(next)) {
+      _saveRotation(next);
       setState(() {
         rotation = next;
       });
@@ -200,6 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (tcpClient.connected) {
         lastIp = device.ip;
+        VirtualCameraBridge.instance.setRotation(rotation);
       } else {
         debugPrint("Could not connect to ${device.ip}");
       }
