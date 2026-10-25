@@ -194,49 +194,75 @@ static bool VerifyMediaSample(
         return false;
     }
 
+    // Wait for the next MEMediaSample, skipping other stream events such as
+    // MEStreamStarted. Give up after five seconds.
     IMFMediaEvent* streamEvent = nullptr;
 
-    HRESULT hr =
-        mediaStream->GetEvent(
-            0,
-            &streamEvent);
+    HRESULT hr = S_OK;
 
-    PrintHR(
-        "[Test] Stream GetEvent",
-        hr);
+    const ULONGLONG waitStart = GetTickCount64();
 
-    if (FAILED(hr) ||
-        streamEvent == nullptr)
+    while (true)
     {
-        return false;
-    }
+        hr =
+            mediaStream->GetEvent(
+                MF_EVENT_FLAG_NO_WAIT,
+                &streamEvent);
 
-    MediaEventType eventType =
-        MEUnknown;
+        if (hr == MF_E_NO_EVENTS_AVAILABLE)
+        {
+            if (GetTickCount64() - waitStart > 5000)
+            {
+                std::cerr
+                    << "[Test] ERROR: timed out waiting for MEMediaSample"
+                    << std::endl;
 
-    hr =
-        streamEvent->GetType(
-            &eventType);
+                return false;
+            }
 
-    PrintHR(
-        "[Test] Stream Event GetType",
-        hr);
+            Sleep(5);
+            continue;
+        }
 
-    if (FAILED(hr))
-    {
-        streamEvent->Release();
-        return false;
-    }
+        PrintHR(
+            "[Test] Stream GetEvent",
+            hr);
 
-    if (eventType != MEMediaSample)
-    {
-        std::cerr
-            << "[Test] ERROR: expected MEMediaSample, got "
+        if (FAILED(hr) ||
+            streamEvent == nullptr)
+        {
+            return false;
+        }
+
+        MediaEventType eventType =
+            MEUnknown;
+
+        hr =
+            streamEvent->GetType(
+                &eventType);
+
+        PrintHR(
+            "[Test] Stream Event GetType",
+            hr);
+
+        if (FAILED(hr))
+        {
+            streamEvent->Release();
+            return false;
+        }
+
+        if (eventType == MEMediaSample)
+        {
+            break;
+        }
+
+        std::cout
+            << "[Test] skipping stream event "
             << static_cast<int>(eventType)
             << std::endl;
 
         streamEvent->Release();
-        return false;
+        streamEvent = nullptr;
     }
 
     PROPVARIANT eventValue;
@@ -473,8 +499,21 @@ static bool VerifyMediaSample(
                 return false;
             }
 
-            if (sampleTime !=
-                expectedSampleTime)
+            // The camera stamps samples with the system clock (MFGetSystemTime),
+            // not a frame counter, so check that time is positive and moves
+            // forward instead of comparing against a fixed value.
+            static LONGLONG previousSampleTime = -1;
+
+            const bool sampleTimeOk =
+                sampleTime > 0 &&
+                sampleTime > previousSampleTime;
+
+            if (sampleTimeOk)
+            {
+                previousSampleTime = sampleTime;
+            }
+
+            if (!sampleTimeOk)
             {
                 std::cerr
                     << "[Test] ERROR: timestamp mismatch. "
