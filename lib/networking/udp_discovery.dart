@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -8,6 +8,43 @@ import 'protocol.dart';
 class UdpDiscovery {
   RawDatagramSocket? _socket;
   StreamSubscription<RawSocketEvent>? _subscription;
+
+  /// Addresses to send the discovery request to: for every IPv4 address of
+  /// this PC, the ".255" address of its /24 network, plus the limited
+  /// broadcast address. Dart does not expose subnet masks, so /24 is assumed,
+  /// which fits nearly all home networks; 255.255.255.255 covers the rest.
+  Future<List<InternetAddress>> _broadcastTargets() async {
+    final targets = <String>{};
+
+    try {
+      final adapters = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+        includeLinkLocal: false,
+      );
+
+      for (final nic in adapters) {
+        for (final address in nic.addresses) {
+          final parts = address.address.split('.');
+
+          if (parts.length == 4) {
+            targets.add('${parts[0]}.${parts[1]}.${parts[2]}.255');
+          }
+        }
+      }
+    } catch (e) {
+      print("Could not list network adapters: $e");
+    }
+
+    // Nothing found: fall back to the address this app always used.
+    if (targets.isEmpty) {
+      targets.add('192.168.0.255');
+    }
+
+    targets.add('255.255.255.255');
+
+    return targets.map((t) => InternetAddress(t)).toList();
+  }
 
   Future<List<Device>> discover() async {
     // Clean up any previous scan
@@ -51,13 +88,25 @@ class UdpDiscovery {
       }
     });
 
-    _socket!.send(
-      utf8.encode(discoveryRequest),
-      InternetAddress("192.168.0.255"),
-      discoveryPort,
-    );
+    final targets = await _broadcastTargets();
+    final sentTo = <String>[];
 
-    print("Discovery broadcast sent to 192.168.0.255");
+    for (final target in targets) {
+      try {
+        _socket!.send(
+          utf8.encode(discoveryRequest),
+          target,
+          discoveryPort,
+        );
+
+        sentTo.add(target.address);
+      } catch (e) {
+        // A network that cannot be reached must not stop the others.
+        print("Discovery send to ${target.address} failed: $e");
+      }
+    }
+
+    print("Discovery broadcast sent to ${sentTo.join(', ')}");
 
     Future.delayed(const Duration(seconds: 5), () async {
       await _subscription?.cancel();
