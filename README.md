@@ -58,7 +58,7 @@ Camera** in your browser or video app.
   (remembered between runs)
 - **Snapshot** - saves the current frame to `Pictures\LensLinks`
 - **Fullscreen**; the picture also zooms with a pinch or the scroll wheel
-- Zoom and Settings buttons are placeholders and do nothing yet
+- **Zoom** steps the picture 1x to 4x; **Settings** has a fill/fit switch for the preview, reset rotation, and shortcuts to the snapshot and log folders
 
 ## Building the native DLL
 
