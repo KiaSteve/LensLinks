@@ -33,6 +33,13 @@ class _HomeScreenState extends State<HomeScreen> {
   // Rotation applied to the virtual camera and the preview, in degrees clockwise.
   int rotation = 0;
 
+  // Zoom button step (1 to 4) and the controller behind the picture.
+  final TransformationController zoomController = TransformationController();
+  int zoomLevel = 1;
+
+  // Preview only: false shows the whole frame, true fills the window.
+  bool fillPreview = false;
+
   Uint8List? currentFrame;
 
   // The phone we are connected to. null means "not connected, and do not
@@ -150,6 +157,100 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       _showMessage("Snapshot failed: $e");
     }
+  }
+
+  void zoomStep() {
+    final next = zoomLevel >= 4 ? 1 : zoomLevel + 1;
+    final size = MediaQuery.of(context).size;
+
+    // Scale around the centre of the window.
+    final tx = -(next - 1) * size.width / 2;
+    final ty = -(next - 1) * size.height / 2;
+
+    zoomController.value =
+        Matrix4.diagonal3Values(next.toDouble(), next.toDouble(), 1)
+          ..setTranslationRaw(tx, ty, 0);
+
+    setState(() {
+      zoomLevel = next;
+    });
+  }
+
+  Future<void> _openFolder(String path) async {
+    try {
+      await Directory(path).create(recursive: true);
+      await Process.start('explorer.exe', [path]);
+    } catch (e) {
+      _showMessage("Could not open $path: $e");
+    }
+  }
+
+  Future<void> openSettings() async {
+    final home = Platform.environment['USERPROFILE'] ?? '';
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text("Settings"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text("Fill the window (crop edges)"),
+                    subtitle: const Text(
+                      "Preview only. The virtual camera is not affected.",
+                    ),
+                    value: fillPreview,
+                    onChanged: (value) {
+                      setDialogState(() {});
+                      setState(() {
+                        fillPreview = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () {
+                      if (VirtualCameraBridge.instance.setRotation(0)) {
+                        _saveRotation(0);
+                        setState(() {
+                          rotation = 0;
+                        });
+                      } else {
+                        _showMessage("Rotation is not supported by this library");
+                      }
+                    },
+                    icon: const Icon(Icons.screen_rotation),
+                    label: const Text("Reset rotation"),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _openFolder('$home\\Pictures\\LensLinks'),
+                    icon: const Icon(Icons.photo_library),
+                    label: const Text("Open snapshots folder"),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _openFolder('C:\\ProgramData\\LensLinks'),
+                    icon: const Icon(Icons.description),
+                    label: const Text("Open log folder"),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text("Close"),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void rotate() {
@@ -307,6 +408,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    zoomController.dispose();
     tcpClient.dispose();
     super.dispose();
   }
@@ -386,6 +488,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   )
                 : InteractiveViewer(
+                    transformationController: zoomController,
                     minScale: 1,
                     maxScale: 4,
                     child: SizedBox.expand(
@@ -393,7 +496,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         quarterTurns: rotation ~/ 90,
                         child: Image.memory(
                           currentFrame!,
-                          fit: BoxFit.contain,
+                          fit: fillPreview ? BoxFit.cover : BoxFit.contain,
                           gaplessPlayback: true,
                           filterQuality: FilterQuality.high,
                         ),
@@ -490,7 +593,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             icon: const Icon(Icons.zoom_in),
                             color: Colors.white,
                             tooltip: "Zoom",
-                            onPressed: () {},
+                            onPressed: zoomStep,
                           ),
 
                           const Spacer(),
@@ -530,7 +633,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             icon: const Icon(Icons.settings),
                             color: Colors.white,
                             tooltip: "Settings",
-                            onPressed: () {},
+                            onPressed: openSettings,
                           ),
 
                           const SizedBox(width: 10),
