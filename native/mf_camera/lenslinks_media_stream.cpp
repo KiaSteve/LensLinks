@@ -16,6 +16,68 @@ static std::string ll_narrow(const wchar_t* w) { std::string s; for (; w && *w; 
 #include <limits>
 #include <ks.h>
 #include <ksmedia.h>
+#include <vector>
+
+namespace
+{
+    int clampInt(int value, int low, int high)
+    {
+        return value < low ? low : (value > high ? high : value);
+    }
+
+    // Converts RGBA bytes (R,G,B,A order) to NV12 using BT.709 with limited
+    // range (Y 16..235, U/V 16..240). Chroma is averaged over each 2x2 block.
+    void rgbaToNv12(
+        const uint8_t* rgba,
+        int width,
+        int height,
+        std::vector<uint8_t>& nv12)
+    {
+        const size_t w = static_cast<size_t>(width);
+        const size_t h = static_cast<size_t>(height);
+
+        nv12.resize(w * h * 3 / 2);
+
+        uint8_t* yPlane = nv12.data();
+        uint8_t* uvPlane = nv12.data() + w * h;
+
+        for (size_t y = 0; y < h; y += 2)
+        {
+            const uint8_t* row0 = rgba + y * w * 4;
+            const uint8_t* row1 = row0 + w * 4;
+
+            uint8_t* y0 = yPlane + y * w;
+            uint8_t* y1 = y0 + w;
+            uint8_t* uv = uvPlane + (y / 2) * w;
+
+            for (size_t x = 0; x < w; x += 2)
+            {
+                int uSum = 0;
+                int vSum = 0;
+
+                for (int k = 0; k < 4; ++k)
+                {
+                    const uint8_t* p = (k < 2 ? row0 : row1) + (x + (k & 1)) * 4;
+
+                    const int r = p[0];
+                    const int g = p[1];
+                    const int b = p[2];
+
+                    const int luma = ((47 * r + 157 * g + 16 * b + 128) >> 8) + 16;
+
+                    (k < 2 ? y0 : y1)[x + (k & 1)] =
+                        static_cast<uint8_t>(clampInt(luma, 16, 235));
+
+                    uSum += ((-26 * r - 87 * g + 112 * b + 128) >> 8) + 128;
+                    vSum += ((112 * r - 102 * g - 10 * b + 128) >> 8) + 128;
+                }
+
+                uv[x] = static_cast<uint8_t>(clampInt((uSum + 2) / 4, 16, 240));
+                uv[x + 1] = static_cast<uint8_t>(clampInt((vSum + 2) / 4, 16, 240));
+            }
+        }
+    }
+}
 
 // ========================================================
 // Constructor
@@ -715,9 +777,38 @@ LensLinksMediaStream::RequestSample(
         return E_INVALIDARG;
     }
 
+    // ----------------------------------------------------
+    // Convert to NV12 (BT.709, limited range)
+    // ----------------------------------------------------
+    //
+    // The stream advertises NV12, which every application decodes the
+    // same way, instead of RGB32, whose byte order applications disagree on.
+
+    if ((frame.width & 1) != 0 ||
+        (frame.height & 1) != 0)
+    {
+        std::cout
+            << "[LensLinksMediaStream] "
+            << "RequestSample: NV12 needs even dimensions, got "
+            << frame.width
+            << "x"
+            << frame.height
+            << std::endl;
+
+        return MF_E_INVALIDMEDIATYPE;
+    }
+
+    static thread_local std::vector<uint8_t> nv12;
+
+    rgbaToNv12(
+        frame.pixels.data(),
+        frame.width,
+        frame.height,
+        nv12);
+
     const DWORD bufferSize =
         static_cast<DWORD>(
-            expectedSize);
+            nv12.size());
 
     // ----------------------------------------------------
     // Create sample
@@ -796,7 +887,7 @@ LensLinksMediaStream::RequestSample(
         {
             std::memcpy(
                 destination,
-                frame.pixels.data(),
+                nv12.data(),
                 bufferSize);
 
             hr =

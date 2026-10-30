@@ -80,7 +80,7 @@ LensLinksMediaSource::LensLinksMediaSource()
 
     hr = mediaType->SetGUID(
         MF_MT_SUBTYPE,
-        MFVideoFormat_RGB32);
+        MFVideoFormat_NV12);
 
     if (FAILED(hr))
     {
@@ -134,8 +134,12 @@ LensLinksMediaSource::LensLinksMediaSource()
         return;
     }
 
-    mediaType->SetUINT32(MF_MT_DEFAULT_STRIDE, 1280 * 4);
-    mediaType->SetUINT32(MF_MT_SAMPLE_SIZE, 1280 * 720 * 4);
+    mediaType->SetUINT32(MF_MT_DEFAULT_STRIDE, 1280);
+    mediaType->SetUINT32(MF_MT_SAMPLE_SIZE, 1280 * 720 * 3 / 2);
+    mediaType->SetUINT32(MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_BT709);
+    mediaType->SetUINT32(MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_709);
+    mediaType->SetUINT32(MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT709);
+    mediaType->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235);
     mediaType->SetUINT32(MF_MT_FIXED_SIZE_SAMPLES, 1);
     mediaType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, 1);
 
@@ -261,7 +265,7 @@ LensLinksMediaSource::LensLinksMediaSource()
     std::cout
         << "[LensLinksMediaSource] "
         << "video stream initialized "
-        << "1280x720 @ 30fps RGB32"
+        << "1280x720 @ 30fps NV12"
         << std::endl;
 }
 
