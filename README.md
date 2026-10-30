@@ -102,6 +102,7 @@ source and should end with `30-FRAME MEDIA PIPELINE TEST PASSED`.
 ## Known limits
 
 - The camera is fixed at 1280x720; other frame shapes are letterboxed.
+- The virtual camera advertises NV12 at 1280x720. An earlier RGB32 version showed red and blue swapped in some apps (browser, WhatsApp) but not others, because applications disagree on RGB32 byte order; NV12 is read the same way everywhere.
 - Frame rate is set by the phone's camera and is about 14 fps in the tests so
   far.
 - Discovery assumes a /24 network on each adapter and also sends to
