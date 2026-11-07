@@ -17,6 +17,9 @@ class VirtualCameraBridge {
   late final LLWriteFrame _writeFrame;
   LLWriteJpeg? _writeJpeg;
   LLSetRotation? _setRotation;
+  LLStartRecording? _startRecording;
+  LLStopRecording? _stopRecording;
+  LLIsRecording? _isRecording;
 
   bool _loaded = false;
 
@@ -53,6 +56,22 @@ class VirtualCameraBridge {
       _setRotation = null;
     }
 
+    try {
+      _startRecording = _library.lookupFunction<LLStartRecordingNative, LLStartRecording>(
+        "LL_StartRecording",
+      );
+      _stopRecording = _library.lookupFunction<LLStopRecordingNative, LLStopRecording>(
+        "LL_StopRecording",
+      );
+      _isRecording = _library.lookupFunction<LLIsRecordingNative, LLIsRecording>(
+        "LL_IsRecording",
+      );
+    } catch (_) {
+      _startRecording = null;
+      _stopRecording = null;
+      _isRecording = null;
+    }
+
     _initialize();
 
     _loaded = true;
@@ -78,6 +97,36 @@ class VirtualCameraBridge {
     if (!_loaded || set == null) return false;
     set(degrees);
     return true;
+  }
+
+  bool get canRecord =>
+      _loaded && _startRecording != null && _stopRecording != null;
+
+  bool get isRecording {
+    final query = _isRecording;
+    return _loaded && query != null && query();
+  }
+
+  /// Starts recording what the virtual camera shows into an MP4 file.
+  /// Returns false if it could not start.
+  bool startRecording(String path) {
+    final start = _startRecording;
+    if (!_loaded || start == null) return false;
+
+    final ptr = path.toNativeUtf16();
+    try {
+      return start(ptr.cast<Uint16>());
+    } finally {
+      malloc.free(ptr);
+    }
+  }
+
+  /// Stops recording and finishes the file. Returns false if the file may
+  /// be incomplete.
+  bool stopRecording() {
+    final stop = _stopRecording;
+    if (!_loaded || stop == null) return false;
+    return stop();
   }
 
   bool get hasJpeg => _loaded && _writeJpeg != null;

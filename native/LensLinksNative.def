@@ -8,5 +8,8 @@ EXPORTS
     LL_WriteFrame
     LL_WriteJpeg
     LL_SetRotation
+    LL_StartRecording
+    LL_StopRecording
+    LL_IsRecording
     DllRegisterServer PRIVATE
     DllUnregisterServer PRIVATE

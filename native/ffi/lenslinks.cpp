@@ -6,6 +6,7 @@
 #include "../mf_camera/virtual_camera_registration.h"
 #include "../virtual_camera/virtual_camera.h"
 #include "../virtual_camera/jpeg_decode.h"
+#include "../virtual_camera/recorder.h"
 
 #include <vector>
 
@@ -55,6 +56,8 @@ LL_EXPORT void LL_Shutdown()
         << "[LensLinks] Shutting down..."
         << std::endl;
 
+    Recorder_Stop();
+
     g_cameraRegistration.stop();
 
     g_frameProvider.stop();
@@ -72,13 +75,21 @@ LL_EXPORT bool LL_WriteFrame(
     int width,
     int height)
 {
+    if (rgba != nullptr &&
+        width > 0 &&
+        height > 0 &&
+        static_cast<size_t>(size) ==
+            static_cast<size_t>(width) * static_cast<size_t>(height) * 4u)
+    {
+        Recorder_Submit(rgba, width, height);
+    }
+
     return VirtualCamera::instance().sendFrame(
         rgba,
         size,
         width,
         height);
 }
-
 
 LL_EXPORT bool LL_WriteJpeg(
     const uint8_t* jpeg,
@@ -103,6 +114,8 @@ LL_EXPORT bool LL_WriteJpeg(
         return false;
     }
 
+    Recorder_Submit(rgba.data(), 1280, 720);
+
     return VirtualCamera::instance().sendFrame(
         rgba.data(),
         static_cast<int>(rgba.size()),
@@ -110,8 +123,22 @@ LL_EXPORT bool LL_WriteJpeg(
         720);
 }
 
-
 LL_EXPORT void LL_SetRotation(int degrees)
 {
     SetJpegRotationDegrees(degrees);
+}
+
+LL_EXPORT bool LL_StartRecording(const wchar_t* path)
+{
+    return Recorder_Start(path, 1280, 720);
+}
+
+LL_EXPORT bool LL_StopRecording()
+{
+    return Recorder_Stop();
+}
+
+LL_EXPORT bool LL_IsRecording()
+{
+    return Recorder_IsRecording();
 }

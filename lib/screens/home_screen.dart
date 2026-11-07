@@ -1,4 +1,5 @@
-﻿import 'dart:io';
+﻿import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -39,6 +40,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Preview only: false shows the whole frame, true fills the window.
   bool fillPreview = false;
+
+  // Recording: whether it is on, when it started, and the elapsed label.
+  bool recording = false;
+  DateTime? recordingStart;
+  Timer? recordingTimer;
+  String recordingElapsed = '00:00';
 
   Uint8List? currentFrame;
 
@@ -253,6 +260,92 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> toggleRecording() async {
+    if (recording) {
+      await _stopRecordingIfActive();
+      return;
+    }
+
+    if (!VirtualCameraBridge.instance.canRecord) {
+      _showMessage("Recording is not supported by the installed native library");
+      return;
+    }
+
+    final home = Platform.environment['USERPROFILE'];
+
+    if (home == null) {
+      _showMessage("Cannot find your user folder");
+      return;
+    }
+
+    final folder = Directory('$home\\Videos\\LensLinks');
+
+    try {
+      await folder.create(recursive: true);
+    } catch (e) {
+      _showMessage("Cannot create ${folder.path}: $e");
+      return;
+    }
+
+    final now = DateTime.now();
+    String two(int v) => v.toString().padLeft(2, '0');
+
+    final name =
+        'LensLinks_${now.year}${two(now.month)}${two(now.day)}_'
+        '${two(now.hour)}${two(now.minute)}${two(now.second)}.mp4';
+
+    final path = '${folder.path}\\$name';
+
+    if (!VirtualCameraBridge.instance.startRecording(path)) {
+      _showMessage(
+        "Could not start recording. See the log (Settings > Open log folder).",
+      );
+      return;
+    }
+
+    recordingStart = now;
+    recordingElapsed = '00:00';
+
+    recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      final started = recordingStart;
+
+      if (!mounted || started == null) return;
+
+      final d = DateTime.now().difference(started);
+
+      setState(() {
+        recordingElapsed = '${two(d.inMinutes)}:${two(d.inSeconds % 60)}';
+      });
+    });
+
+    setState(() {
+      recording = true;
+    });
+
+    _showMessage("Recording to $path");
+  }
+
+  Future<void> _stopRecordingIfActive() async {
+    if (!recording) return;
+
+    recordingTimer?.cancel();
+    recordingTimer = null;
+
+    final ok = VirtualCameraBridge.instance.stopRecording();
+
+    if (mounted) {
+      setState(() {
+        recording = false;
+      });
+    }
+
+    _showMessage(
+      ok
+          ? "Recording saved to Videos\\LensLinks"
+          : "Recording stopped, but the file may be incomplete",
+    );
+  }
+
   void rotate() {
     final next = (rotation + 90) % 360;
 
@@ -356,6 +449,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> disconnect() async {
+    await _stopRecordingIfActive();
     // Forget the phone first, so the automatic reconnect does not kick in.
     lastIp = null;
 
@@ -408,6 +502,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    recordingTimer?.cancel();
+    VirtualCameraBridge.instance.stopRecording();
     zoomController.dispose();
     tcpClient.dispose();
     super.dispose();
@@ -595,6 +691,29 @@ class _HomeScreenState extends State<HomeScreen> {
                             tooltip: "Zoom",
                             onPressed: zoomStep,
                           ),
+
+                          IconButton(
+                            icon: Icon(
+                              recording
+                                  ? Icons.stop_circle
+                                  : Icons.fiber_manual_record,
+                            ),
+                            color: recording ? Colors.redAccent : Colors.white,
+                            tooltip: recording ? "Stop recording" : "Record",
+                            onPressed: toggleRecording,
+                          ),
+
+                          if (recording)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 4),
+                              child: Text(
+                                recordingElapsed,
+                                style: const TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
 
                           const Spacer(),
 

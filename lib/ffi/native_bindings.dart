@@ -15,3 +15,10 @@ typedef LLWriteJpeg = bool Function(Pointer<Uint8>, int);
 
 typedef LLSetRotationNative = Void Function(Int32);
 typedef LLSetRotation = void Function(int);
+
+typedef LLStartRecordingNative = Bool Function(Pointer<Uint16>);
+typedef LLStartRecording = bool Function(Pointer<Uint16>);
+typedef LLStopRecordingNative = Bool Function();
+typedef LLStopRecording = bool Function();
+typedef LLIsRecordingNative = Bool Function();
+typedef LLIsRecording = bool Function();

@@ -23,4 +23,11 @@ extern "C"
     LL_EXPORT bool LL_WriteJpeg(const uint8_t* jpeg, int size);
 
     LL_EXPORT void LL_SetRotation(int degrees);
+
+    // Recording to an MP4 file. The path is UTF-16.
+    LL_EXPORT bool LL_StartRecording(const wchar_t* path);
+
+    LL_EXPORT bool LL_StopRecording();
+
+    LL_EXPORT bool LL_IsRecording();
 }
