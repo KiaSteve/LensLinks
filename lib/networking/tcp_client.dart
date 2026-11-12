@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
 import '../ffi/virtual_camera_bridge.dart';
+import 'audio_client.dart';
 
 class TcpClient {
   Socket? _socket;
@@ -19,6 +20,7 @@ class TcpClient {
   VoidCallback? onDisconnected;
 
   bool _disconnecting = false;
+  final AudioClient _audio = AudioClient();
 
   bool get connected => _socket != null;
 
@@ -40,6 +42,7 @@ class TcpClient {
       await VirtualCameraBridge.instance.load();
 
       debugPrint("Connected to $ip:5001");
+      unawaited(_audio.start(ip));
 
       _socket!.listen(
         _onData,
@@ -61,6 +64,7 @@ class TcpClient {
   }
 
   void _handleDisconnect() {
+    _audio.stop();
     if (_disconnecting) return;
 
     _disconnecting = true;
@@ -134,6 +138,7 @@ class TcpClient {
   }
 
   Future<void> disconnect() async {
+    _audio.stop();
     if (_disconnecting) return;
 
     _disconnecting = true;
