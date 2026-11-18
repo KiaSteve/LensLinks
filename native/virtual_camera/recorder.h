@@ -15,3 +15,7 @@ bool Recorder_IsRecording();
 // rgba: width * height * 4 bytes, R,G,B,A order. Frames whose size does not
 // match the size given to Recorder_Start are ignored.
 void Recorder_Submit(const uint8_t* rgba, int width, int height);
+
+// pcm: 16-bit little-endian mono samples at 44100 Hz. Ignored unless recording.
+// Never waits for the encoder.
+void Recorder_SubmitAudio(const uint8_t* pcm, int size);

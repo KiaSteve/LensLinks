@@ -30,4 +30,7 @@ extern "C"
     LL_EXPORT bool LL_StopRecording();
 
     LL_EXPORT bool LL_IsRecording();
+
+    // 16-bit little-endian mono PCM at 44100 Hz; used only while recording.
+    LL_EXPORT void LL_WriteAudio(const uint8_t* pcm, int size);
 }

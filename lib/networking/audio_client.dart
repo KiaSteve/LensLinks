@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import '../ffi/virtual_camera_bridge.dart';
 
 /// Receives the phone's microphone audio on TCP port 5002.
 ///
@@ -98,6 +99,7 @@ class AudioClient {
 
   void _onChunk(Uint8List chunk) {
     _chunks++;
+    VirtualCameraBridge.instance.sendAudio(chunk);
     _bytes += chunk.length;
 
     final nowMs = DateTime.now().millisecondsSinceEpoch;

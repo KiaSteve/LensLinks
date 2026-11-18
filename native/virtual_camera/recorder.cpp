@@ -54,6 +54,18 @@ namespace
         LONGLONG startCounter = 0;
         LONGLONG frequency = 1;
 
+        // Audio: chunks waiting to be written (each with its arrival time).
+        std::mutex audioMutex;
+        std::vector<std::pair<LONGLONG, std::vector<uint8_t>>> audioQueue;
+        size_t audioQueuedBytes = 0;
+
+        // Set under 'mutex' when audio is waiting; wakes the worker.
+        bool audioPending = false;
+
+        // Whether the audio track exists (skipped if the AAC encoder is
+        // unavailable).
+        std::atomic<bool> audioEnabled{false};
+
         bool finalizeOk = false;
     };
 
@@ -154,12 +166,99 @@ namespace
         return MFSetAttributeRatio(type, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
     }
 
+    // ---- audio (AAC, mono, 44.1 kHz) ----
+
+    constexpr UINT32 kAudioSampleRate = 44100;
+    constexpr UINT32 kAudioChannels = 1;
+    constexpr UINT32 kAudioBitsPerSample = 16;
+    constexpr UINT32 kAudioAacBytesPerSecond = 16000;  // 128 kbit/s
+    constexpr size_t kMaxQueuedAudioBytes = kAudioSampleRate * 2 * 5;  // 5 s
+
+    LONGLONG audioBytesToHns(unsigned long long bytes)
+    {
+        return static_cast<LONGLONG>(bytes) * 10000000LL /
+            (kAudioSampleRate * kAudioChannels * (kAudioBitsPerSample / 8));
+    }
+
+    HRESULT addAudioStream(IMFSinkWriter* writer, DWORD& audioIndex)
+    {
+        ComPtr<IMFMediaType> outputType;
+        HRESULT hr = MFCreateMediaType(&outputType);
+        if (FAILED(hr)) return hr;
+
+        outputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+        outputType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_AAC);
+        outputType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, kAudioBitsPerSample);
+        outputType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, kAudioSampleRate);
+        outputType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, kAudioChannels);
+        outputType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, kAudioAacBytesPerSecond);
+        outputType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 1);
+        outputType->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 0);
+        outputType->SetUINT32(MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, 0x29);
+
+        hr = writer->AddStream(outputType.Get(), &audioIndex);
+        if (FAILED(hr)) return hr;
+
+        ComPtr<IMFMediaType> inputType;
+        hr = MFCreateMediaType(&inputType);
+        if (FAILED(hr)) return hr;
+
+        inputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+        inputType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
+        inputType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, kAudioBitsPerSample);
+        inputType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, kAudioSampleRate);
+        inputType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, kAudioChannels);
+        inputType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, kAudioChannels * kAudioBitsPerSample / 8);
+        inputType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, kAudioSampleRate * kAudioChannels * kAudioBitsPerSample / 8);
+
+        return writer->SetInputMediaType(audioIndex, inputType.Get(), nullptr);
+    }
+
+    HRESULT writeAudio(
+        IMFSinkWriter* writer,
+        DWORD audioIndex,
+        const std::vector<uint8_t>& pcm,
+        LONGLONG time)
+    {
+        ComPtr<IMFMediaBuffer> buffer;
+        HRESULT hr = MFCreateMemoryBuffer(static_cast<DWORD>(pcm.size()), &buffer);
+        if (FAILED(hr)) return hr;
+
+        BYTE* data = nullptr;
+        hr = buffer->Lock(&data, nullptr, nullptr);
+        if (FAILED(hr)) return hr;
+
+        memcpy(data, pcm.data(), pcm.size());
+
+        buffer->Unlock();
+
+        hr = buffer->SetCurrentLength(static_cast<DWORD>(pcm.size()));
+        if (FAILED(hr)) return hr;
+
+        ComPtr<IMFSample> sample;
+        hr = MFCreateSample(&sample);
+        if (FAILED(hr)) return hr;
+
+        hr = sample->AddBuffer(buffer.Get());
+        if (FAILED(hr)) return hr;
+
+        hr = sample->SetSampleTime(time);
+        if (FAILED(hr)) return hr;
+
+        hr = sample->SetSampleDuration(audioBytesToHns(pcm.size()));
+        if (FAILED(hr)) return hr;
+
+        return writer->WriteSample(audioIndex, sample.Get());
+    }
+
     HRESULT createWriter(
         const std::wstring& path,
         int width,
         int height,
         ComPtr<IMFSinkWriter>& writer,
-        DWORD& streamIndex)
+        DWORD& streamIndex,
+        bool withAudio,
+        DWORD& audioIndex)
     {
         HRESULT hr = MFCreateSinkWriterFromURL(
             path.c_str(),
@@ -193,6 +292,12 @@ namespace
 
         hr = writer->SetInputMediaType(streamIndex, inputType.Get(), nullptr);
         if (FAILED(hr)) return hr;
+
+        if (withAudio)
+        {
+            hr = addAudioStream(writer.Get(), audioIndex);
+            if (FAILED(hr)) return hr;
+        }
 
         return writer->BeginWriting();
     }
@@ -257,13 +362,28 @@ namespace
         bool mfStarted = false;
         ComPtr<IMFSinkWriter> writer;
         DWORD streamIndex = 0;
+        DWORD audioIndex = 0;
+        bool audioActive = false;
 
         HRESULT hr = MFStartup(MF_VERSION);
 
         if (SUCCEEDED(hr))
         {
             mfStarted = true;
-            hr = createWriter(path, width, height, writer, streamIndex);
+            hr = createWriter(path, width, height, writer, streamIndex, true, audioIndex);
+
+            if (SUCCEEDED(hr))
+            {
+                audioActive = true;
+            }
+            else
+            {
+                logHr("audio track unavailable, recording video only", hr);
+
+                writer.Reset();
+
+                hr = createWriter(path, width, height, writer, streamIndex, false, audioIndex);
+            }
         }
 
         if (FAILED(hr))
@@ -290,6 +410,18 @@ namespace
 
         std::cout << "[Recorder] recording started" << std::endl;
 
+        {
+            std::lock_guard<std::mutex> audioLock(s.audioMutex);
+            s.audioQueue.clear();
+            s.audioQueuedBytes = 0;
+        }
+
+        s.audioEnabled = audioActive;
+
+        std::cout
+            << "[Recorder] audio track: " << (audioActive ? "yes" : "no")
+            << std::endl;
+
         ready.set_value(true);
 
         std::vector<uint8_t> frame;
@@ -305,23 +437,93 @@ namespace
 
         unsigned written = 0;
 
+        // Audio is written with continuous timestamps counted from the first
+        // chunk, so playback has no gaps or overlaps.
+        LONGLONG audioBase = -1;
+        unsigned long long audioBytesWritten = 0;
+        unsigned audioChunksWritten = 0;
+        std::vector<std::pair<LONGLONG, std::vector<uint8_t>>> audioBatch;
+
+        auto drainAudio = [&]()
+        {
+            // Audio is timed against the first video frame, so wait for it.
+            if (!audioActive || failed || !haveBase)
+            {
+                return;
+            }
+
+            {
+                std::lock_guard<std::mutex> audioLock(s.audioMutex);
+                audioBatch.swap(s.audioQueue);
+                s.audioQueuedBytes = 0;
+            }
+
+            for (auto& item : audioBatch)
+            {
+                if (audioBase < 0)
+                {
+                    audioBase = (std::max)(
+                        item.first - audioBytesToHns(item.second.size()) - baseTime,
+                        static_cast<LONGLONG>(0));
+                }
+
+                const LONGLONG sampleTime =
+                    audioBase + audioBytesToHns(audioBytesWritten);
+
+                hr = writeAudio(writer.Get(), audioIndex, item.second, sampleTime);
+
+                if (FAILED(hr))
+                {
+                    logHr("audio write failed, continuing without audio", hr);
+                    audioActive = false;
+                    s.audioEnabled = false;
+                    break;
+                }
+
+                audioBytesWritten += item.second.size();
+                ++audioChunksWritten;
+            }
+
+            audioBatch.clear();
+        };
+
         while (true)
         {
             LONGLONG time = 0;
+            bool haveFrame = false;
+            bool stopNow = false;
 
             {
                 std::unique_lock<std::mutex> lock(s.mutex);
 
-                s.cv.wait(lock, [&] { return s.hasPending || s.stopRequested; });
+                s.cv.wait(lock, [&] { return s.hasPending || s.stopRequested || s.audioPending; });
 
-                if (!s.hasPending)
+                const bool audioWaiting = s.audioPending;
+                s.audioPending = false;
+
+                if (s.hasPending)
                 {
-                    break;
+                    frame.swap(s.pending);
+                    time = s.pendingTime;
+                    s.hasPending = false;
+                    haveFrame = true;
                 }
+                else if (!audioWaiting)
+                {
+                    stopNow = true;  // only a stop request gets here
+                }
+            }
 
-                frame.swap(s.pending);
-                time = s.pendingTime;
-                s.hasPending = false;
+            if (stopNow)
+            {
+                break;
+            }
+
+            drainAudio();
+
+            if (!haveFrame)
+            {
+                continue;
             }
 
             // After a write error keep draining, so Submit never backs up.
@@ -369,6 +571,8 @@ namespace
             havePrevious = true;
         }
 
+        drainAudio();
+
         if (!failed && havePrevious)
         {
             hr = writeSample(
@@ -394,7 +598,7 @@ namespace
         logHr("finalize", hr);
 
         std::cout
-            << "[Recorder] finished, frames written: " << written
+            << "[Recorder] finished, frames written: " << written << ", audio chunks: " << audioChunksWritten
             << std::endl;
 
         s.finalizeOk = SUCCEEDED(hr) && !failed && written > 0;
@@ -517,6 +721,52 @@ void Recorder_Submit(const uint8_t* rgba, int width, int height)
     s.pending.assign(rgba, rgba + bytes);
     s.pendingTime = elapsedHns(s);
     s.hasPending = true;
+
+    s.cv.notify_one();
+}
+
+void Recorder_SubmitAudio(const uint8_t* pcm, int size)
+{
+    State& s = state();
+
+    if (!s.recording.load() || !s.audioEnabled.load() || pcm == nullptr || size <= 0)
+    {
+        return;
+    }
+
+    // Whole 16-bit samples only.
+    const size_t bytes = static_cast<size_t>(size) & ~static_cast<size_t>(1);
+
+    if (bytes == 0)
+    {
+        return;
+    }
+
+    const LONGLONG arrival = elapsedHns(s);
+
+    {
+        std::lock_guard<std::mutex> audioLock(s.audioMutex);
+
+        // Too much waiting: drop rather than grow without bound.
+        if (s.audioQueuedBytes + bytes > kMaxQueuedAudioBytes)
+        {
+            return;
+        }
+
+        s.audioQueue.emplace_back(arrival, std::vector<uint8_t>(pcm, pcm + bytes));
+        s.audioQueuedBytes += bytes;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(s.mutex);
+
+        if (s.stopRequested)
+        {
+            return;
+        }
+
+        s.audioPending = true;
+    }
 
     s.cv.notify_one();
 }

@@ -11,5 +11,6 @@ EXPORTS
     LL_StartRecording
     LL_StopRecording
     LL_IsRecording
+    LL_WriteAudio
     DllRegisterServer PRIVATE
     DllUnregisterServer PRIVATE

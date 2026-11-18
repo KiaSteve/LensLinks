@@ -22,3 +22,6 @@ typedef LLStopRecordingNative = Bool Function();
 typedef LLStopRecording = bool Function();
 typedef LLIsRecordingNative = Bool Function();
 typedef LLIsRecording = bool Function();
+
+typedef LLWriteAudioNative = Void Function(Pointer<Uint8>, Int32);
+typedef LLWriteAudio = void Function(Pointer<Uint8>, int);

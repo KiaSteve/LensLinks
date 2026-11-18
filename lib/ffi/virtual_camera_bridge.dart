@@ -20,6 +20,7 @@ class VirtualCameraBridge {
   LLStartRecording? _startRecording;
   LLStopRecording? _stopRecording;
   LLIsRecording? _isRecording;
+  LLWriteAudio? _writeAudio;
 
   bool _loaded = false;
 
@@ -72,6 +73,14 @@ class VirtualCameraBridge {
       _isRecording = null;
     }
 
+    try {
+      _writeAudio = _library.lookupFunction<LLWriteAudioNative, LLWriteAudio>(
+        "LL_WriteAudio",
+      );
+    } catch (_) {
+      _writeAudio = null;
+    }
+
     _initialize();
 
     _loaded = true;
@@ -97,6 +106,23 @@ class VirtualCameraBridge {
     if (!_loaded || set == null) return false;
     set(degrees);
     return true;
+  }
+
+  /// Hands a chunk of phone microphone audio (16-bit little-endian mono PCM at
+  /// 44100 Hz) to the recorder. Does nothing unless recording.
+  void sendAudio(Uint8List pcm) {
+    final write = _writeAudio;
+    final query = _isRecording;
+
+    if (!_loaded || write == null || query == null || !query()) return;
+
+    final ptr = malloc<Uint8>(pcm.length);
+    try {
+      ptr.asTypedList(pcm.length).setAll(0, pcm);
+      write(ptr, pcm.length);
+    } finally {
+      malloc.free(ptr);
+    }
   }
 
   bool get canRecord =>

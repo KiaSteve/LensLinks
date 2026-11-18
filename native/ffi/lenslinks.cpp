@@ -142,3 +142,9 @@ LL_EXPORT bool LL_IsRecording()
 {
     return Recorder_IsRecording();
 }
+
+
+LL_EXPORT void LL_WriteAudio(const uint8_t* pcm, int size)
+{
+    Recorder_SubmitAudio(pcm, size);
+}
