@@ -1,5 +1,5 @@
 name: lenslinks
-description: "A new Flutter project."
+description: "LensLinks: use an Android phone as a Windows webcam (Windows app and virtual camera)."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -38,6 +38,8 @@ dependencies:
   window_manager: ^0.5.1
   ffi: ^2.1.2
   image: ^4.2.0
+  crypto: ^3.0.3
+  pointycastle: ^3.9.1
   
 
 dev_dependencies:

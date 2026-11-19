@@ -1,14 +1,15 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import '../ffi/virtual_camera_bridge.dart';
+import 'pairing.dart';
 
 /// Receives the phone's microphone audio on TCP port 5002.
 ///
-/// Format: PCM, 16-bit little-endian, 44100 Hz, mono, in chunks, each
-/// preceded by its length as a 4-byte big-endian integer.
+/// Starts with the pairing handshake and is then encrypted (see pairing.dart).
+/// Inside the encrypted records: PCM, 16-bit little-endian, 44100 Hz, mono, in
+/// chunks, each preceded by its length as a 4-byte big-endian integer.
 class AudioClient {
   static const int port = 5002;
 
@@ -23,7 +24,7 @@ class AudioClient {
 
   /// Connects to the phone. Never throws: an older phone app without audio
   /// simply refuses the connection.
-  Future<void> start(String ip) async {
+  Future<void> start(String ip, PairingKey key) async {
     stop();
 
     try {
@@ -41,8 +42,33 @@ class AudioClient {
       _bytes = 0;
       _statStartMs = DateTime.now().millisecondsSinceEpoch;
 
+      final handshake = PairingClient(key: key, send: socket.add);
+      SecureReader? reader;
+      var authenticated = false;
+
       socket.listen(
-        _onData,
+        (Uint8List data) {
+          if (!authenticated) {
+            final rest = handshake.feed(data);
+
+            if (handshake.result == PairingResult.pending) return;
+
+            if (handshake.result != PairingResult.accepted) {
+              debugPrint("Audio pairing key was not accepted");
+              if (identical(_socket, socket)) stop();
+              return;
+            }
+
+            authenticated = true;
+            reader = SecureReader(handshake.keys!);
+            _statStartMs = DateTime.now().millisecondsSinceEpoch;
+
+            if (rest.isNotEmpty) _onSecureData(reader!, rest);
+            return;
+          }
+
+          _onSecureData(reader!, data);
+        },
         onDone: () {
           debugPrint("Audio connection closed");
           if (identical(_socket, socket)) stop();
@@ -69,6 +95,19 @@ class AudioClient {
     try {
       socket?.destroy();
     } catch (_) {}
+  }
+
+  // Decrypts what the phone sent and hands each packet to [_onData]. Anything
+  // that fails the integrity check closes the audio connection.
+  void _onSecureData(SecureReader reader, Uint8List data) {
+    try {
+      for (final plain in reader.add(data)) {
+        _onData(plain);
+      }
+    } on SecureChannelException catch (e) {
+      debugPrint("Encrypted audio error: $e");
+      stop();
+    }
   }
 
   void _onData(Uint8List data) {

@@ -1,13 +1,14 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:window_manager/window_manager.dart';
 
 import '../ffi/virtual_camera_bridge.dart';
 import '../models/device.dart';
+import '../networking/pairing.dart';
 import '../networking/tcp_client.dart';
 import '../services/discovery_service.dart';
 import '../widgets/device_card.dart';
@@ -61,6 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
 
     rotation = _loadRotation();
+    tcpClient.key = _loadKey();
 
     tcpClient.frames.listen((frame) {
       if (!mounted) return;
@@ -96,6 +98,108 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (_) {
       return 0;
     }
+  }
+
+  // The pairing key that worked last time. The phone keeps its key, so this
+  // is only asked for once per phone.
+  File? _pairingFile() {
+    final appData = Platform.environment['APPDATA'];
+
+    if (appData == null) return null;
+
+    return File('$appData\\LensLinks\\pairing.txt');
+  }
+
+  PairingKey? _loadKey() {
+    try {
+      final file = _pairingFile();
+
+      if (file == null || !file.existsSync()) return null;
+
+      return PairingKey.parse(file.readAsStringSync());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _saveKey(PairingKey key) {
+    try {
+      final file = _pairingFile();
+
+      if (file == null) return;
+
+      file.parent.createSync(recursive: true);
+      file.writeAsStringSync(key.display);
+    } catch (e) {
+      debugPrint("Could not save pairing key: $e");
+    }
+  }
+
+  Future<PairingKey?> _askPairingKey({required bool wrong}) async {
+    if (!mounted) return null;
+
+    final controller = TextEditingController();
+
+    return showDialog<PairingKey>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        void submit() {
+          final parsed = PairingKey.parse(controller.text);
+
+          if (parsed != null) {
+            Navigator.of(dialogContext).pop(parsed);
+          }
+        }
+
+        return AlertDialog(
+          title: const Text("Pairing key"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Enter the 16-character key shown on the phone, for example ABCD-EFGH-JKMN-PQRS.",
+              ),
+              if (wrong)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    "That key was not accepted. Check the phone screen and try again.",
+                    style: TextStyle(color: Colors.redAccent),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                maxLength: 19,
+                textCapitalization: TextCapitalization.characters,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9 -]')),
+                ],
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  counterText: '',
+                  hintText: 'XXXX-XXXX-XXXX-XXXX',
+                ),
+                onSubmitted: (_) => submit(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text("Cancel"),
+            ),
+            FilledButton(
+              onPressed: submit,
+              child: const Text("Connect"),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _saveRotation(int degrees) {
@@ -428,13 +532,41 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      await tcpClient.connect(device.ip);
+      var attempts = 0;
 
-      if (tcpClient.connected) {
-        lastIp = device.ip;
-        VirtualCameraBridge.instance.setRotation(rotation);
-      } else {
-        debugPrint("Could not connect to ${device.ip}");
+      while (true) {
+        final hadKey = tcpClient.hasKey;
+
+        await tcpClient.connect(device.ip);
+
+        if (tcpClient.connected) {
+          lastIp = device.ip;
+          _saveKey(tcpClient.key!);
+          VirtualCameraBridge.instance.setRotation(rotation);
+          break;
+        }
+
+        if (!tcpClient.pairingRejected) {
+          debugPrint("Could not connect to ${device.ip}");
+          break;
+        }
+
+        // The phone locks out a PC that keeps trying wrong keys, so give up
+        // after a few tries.
+        if (attempts >= 3) {
+          _showMessage(
+            "Pairing failed. Check the key on the phone and press Scan to try again.",
+          );
+          break;
+        }
+
+        attempts++;
+
+        final entered = await _askPairingKey(wrong: hadKey);
+
+        if (entered == null) break;
+
+        tcpClient.key = entered;
       }
     } catch (e) {
       debugPrint("Connect error: $e");
@@ -485,6 +617,16 @@ class _HomeScreenState extends State<HomeScreen> {
       await tcpClient.connect(ip);
 
       if (!mounted) return;
+
+      if (tcpClient.pairingRejected) {
+        // The phone has a new pairing key. Stop retrying (the phone would lock
+        // this PC out) and ask the user to pair again.
+        lastIp = null;
+
+        _showMessage(
+          "The phone's pairing key changed. Press Scan and enter the new key.",
+        );
+      }
 
       setState(() {
         devices = _withConnected(tcpClient.connected ? ip : null);
