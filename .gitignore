@@ -47,3 +47,5 @@ native_build/
 *.bak
 *.bak[0-9]*
 *.old
+
+installer/Output/

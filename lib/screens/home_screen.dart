@@ -520,6 +520,70 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Asks for the phone's IP address, for networks where the scan cannot
+  /// find it (some routers block broadcast messages between devices).
+  Future<void> connectByIp() async {
+    if (scanning || connecting || !mounted) return;
+
+    final controller = TextEditingController(text: lastIp ?? '');
+
+    final ip = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        void submit() {
+          final text = controller.text.trim();
+          final parsed = InternetAddress.tryParse(text);
+
+          if (parsed != null && parsed.type == InternetAddressType.IPv4) {
+            Navigator.of(dialogContext).pop(text);
+          }
+        }
+
+        return AlertDialog(
+          title: const Text("Connect by IP address"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Enter the phone's Wi-Fi IP address, for example 192.168.0.102. "
+                "You can find it in the phone's Wi-Fi settings.",
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                ],
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: '192.168.0.102',
+                ),
+                onSubmitted: (_) => submit(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text("Cancel"),
+            ),
+            FilledButton(
+              onPressed: submit,
+              child: const Text("Connect"),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (ip == null || !mounted) return;
+
+    await connectTo(Device(id: ip, name: "Android Phone", ip: ip, port: 5000));
+  }
+
   Future<void> connectTo(Device device) async {
     if (connecting) return;
 
@@ -765,7 +829,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         side: const BorderSide(color: Colors.white54),
                       ),
                     )
-                  else
+                  else ...[
+                    TextButton.icon(
+                      onPressed: (scanning || connecting) ? null : connectByIp,
+                      icon: const Icon(Icons.edit_location_alt),
+                      label: const Text("Enter IP"),
+                    ),
+                    const SizedBox(width: 8),
                     FilledButton.icon(
                       onPressed: (scanning || connecting) ? null : scanNetwork,
                       icon: scanning
@@ -777,6 +847,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           : const Icon(Icons.search),
                       label: Text(scanning ? "Scanning..." : "Scan"),
                     ),
+                  ],
                 ],
               ),
             ),
